@@ -12,8 +12,30 @@
       "methods": ["POST", "OPTIONS"]
     },
     {
+      "src": "/api/supabase",
+      "dest": "/api/supabase.ts",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/auth",
+      "dest": "/api/auth.ts",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/chatbot-widget.umd.js",
+      "dest": "/dist/chatbot-widget.umd.js"
+    },
+    {
+      "src": "/chatbot-widget.es.js",
+      "dest": "/dist/chatbot-widget.es.js"
+    },
+    {
+      "src": "/style.css",
+      "dest": "/dist/style.css"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/dist/$1"
+      "dest": "/test-site.html"
     }
   ]
 }
