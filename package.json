@@ -7,8 +7,8 @@
     "dev": "vite",
     "widget:build": "vite build --config vite.widget.config.ts",
     "widget:preview": "vite preview --port 5173",
-    "build": "vite build",
-    "vercel-build": "vite build",
+    "build": "vite build --config vite.widget.config.ts",
+    "vercel-build": "vite build --config vite.widget.config.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
