@@ -1,5 +1,7 @@
 {
   "version": 2,
+  "buildCommand": "npm run vercel-build",
+  "outputDirectory": "dist",
   "functions": {
     "api/**/*.ts": {
       "runtime": "@vercel/node@3.0.0"
@@ -22,20 +24,11 @@
       "methods": ["POST", "OPTIONS"]
     },
     {
-      "src": "/chatbot-widget.umd.js",
-      "dest": "/dist/chatbot-widget.umd.js"
-    },
-    {
-      "src": "/chatbot-widget.es.js",
-      "dest": "/dist/chatbot-widget.es.js"
-    },
-    {
-      "src": "/style.css",
-      "dest": "/dist/style.css"
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "dest": "/test-site.html"
+      "dest": "/index.html"
     }
   ]
 }
