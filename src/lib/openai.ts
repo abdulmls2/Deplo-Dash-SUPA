@@ -5,8 +5,8 @@ You are a helpful customer support assistant. Your goal is to provide clear, acc
 // Function to generate bot response using the API endpoint
 export const generateBotResponse = async (message: string, conversationId: string): Promise<string> => {
   try {
-    // Use local development endpoint
-    const API_URL = 'http://localhost:3000/api/chat';
+    // Always use the absolute URL for the API endpoint
+    const API_URL = 'https://deplo-dash.vercel.app/api/chat';
     
     const response = await fetch(API_URL, {
       method: 'POST',
@@ -32,9 +32,9 @@ export const generateBotResponse = async (message: string, conversationId: strin
     }
 
     const data = await response.json();
-    return data.response;
+    return data.response || 'Sorry, I could not generate a response.';
   } catch (error) {
-    console.error('Error generating bot response:', error);
+    console.error('Error generating response:', error);
     throw error;
   }
 };
