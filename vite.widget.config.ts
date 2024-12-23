@@ -11,7 +11,7 @@ export default defineConfig({
       name: 'chatbotWidget',
       fileName: (format) => `chatbot-widget.${format}.js`
     },
-    outDir: 'public/widget',
+    outDir: 'dist',
     rollupOptions: {
       external: ['react', 'react-dom'],
       output: {
