@@ -25,43 +25,64 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
-  // Handle CORS
   if (await cors(req, res)) return;
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  const { action, payload } = req.body;
 
   try {
-    const { action } = req.body;
-
     switch (action) {
-      case 'signInAnonymously':
-        const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
-        if (authError) throw authError;
-        return res.status(200).json({ user: authData.user });
+      case 'signIn':
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: payload.email,
+          password: payload.password,
+        });
+        if (signInError) throw signInError;
+        return res.json({ user: signInData.user });
 
-      case 'getUser':
+      case 'signUp':
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: payload.email,
+          password: payload.password,
+        });
+        if (signUpError) throw signUpError;
+
+        if (signUpData.user) {
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert([{ 
+              id: signUpData.user.id, 
+              username: payload.username, 
+              email: payload.email 
+            }]);
+          if (profileError) throw profileError;
+        }
+        return res.json({ user: signUpData.user });
+
+      case 'signOut':
+        const { error: signOutError } = await supabase.auth.signOut();
+        if (signOutError) throw signOutError;
+        return res.json({ success: true });
+
+      case 'getProfile':
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (userError) throw userError;
-        return res.status(200).json({ user });
 
-      case 'getDomainSettings':
-        const { domainId } = req.body;
-        const { data: settings, error: settingsError } = await supabase
-          .from('domain_settings')
-          .select('*')
-          .eq('domain_id', domainId)
-          .single();
-        
-        if (settingsError && !settingsError.message.includes('No rows found')) throw settingsError;
-        return res.status(200).json({ settings });
+        if (user) {
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+          if (profileError) throw profileError;
+          return res.json({ user, profile });
+        }
+        return res.json({ user: null, profile: null });
 
       default:
         return res.status(400).json({ error: 'Invalid action' });
     }
   } catch (error) {
-    console.error('API Error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Auth API error:', error);
+    return res.status(500).json({ error: error.message });
   }
 }
