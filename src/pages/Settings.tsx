@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, CreditCard, Calendar, Download, LogOut, Save } from 'lucide-react';
 import { toast, Toaster } from 'react-hot-toast';
+import { supabase } from '../lib/supabase'; // Import your supabase client
 
 interface Plan {
   id: string;
@@ -49,212 +50,248 @@ export default function Settings() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const fetchUserProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('full_name, username')
+          .eq('id', user.id)
+          .single();
+
+        if (data) {
+          setName(data.full_name);
+          setUsername(data.username);
+        } else if (error) {
+          console.error('Error fetching user profile:', error);
+        }
+
+        setEmail(user.email);
+      }
+    };
+
     fetchUserProfile();
   }, []);
 
-  const fetchUserProfile = async () => {
-    try {
-      const response = await fetch('/api/supabase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'getProfile' })
-      });
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-
-      const { user, profile } = data;
-      if (user && profile) {
-        setEmail(user.email);
-        setName(profile.name || '');
-        setUsername(profile.username || '');
-        setCompany(profile.company || 'Acme Inc');
-        setAvatar(profile.avatar_url || avatar);
-      }
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-      toast.error('Failed to load profile');
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatar(reader.result as string);
+        toast.success('Profile photo updated successfully');
+      };
+      reader.readAsDataURL(file);
     }
   };
+
+  
 
   const handleSaveProfile = async () => {
-    try {
-      const response = await fetch('/api/supabase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'updateProfile',
-          payload: {
-            name,
-            username,
-            company
-          }
-        })
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) return;
+  
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({
+        id: user.id,
+        full_name: name,
+        username: user.email?.split('@')[0], // Ensure this matches 'unique not null' constraint
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'id'
       });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-
-      toast.success('Profile updated successfully');
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      toast.error('Failed to update profile');
+  
+    if (error) {
+      console.error('Error details:', error);
+      toast.error('Failed to save name');
+    } else {
+      toast.success('Profile updated');
     }
   };
 
-  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('action', 'uploadAvatar');
-
-      const response = await fetch('/api/supabase', {
-        method: 'POST',
-        body: formData
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-
-      setAvatar(data.avatarUrl);
-      toast.success('Avatar updated successfully');
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
-      toast.error('Failed to upload avatar');
-    }
+  const handlePlanChange = (planId: string) => {
+    toast.success(`Plan will be changed to ${planId} at the start of next billing cycle`);
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <Toaster position="top-right" />
-      <div className="max-w-3xl mx-auto space-y-8">
-        {/* Profile Section */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-2xl font-bold mb-6">Profile Settings</h2>
-          <div className="space-y-6">
-            {/* Avatar */}
-            <div className="flex items-center space-x-4">
-              <div className="relative">
+    <div className="p-6 max-w-6xl mx-auto">
+      {/* Removed duplicate notifications section */}
+      {/* <Toaster 
+        position="bottom-right" 
+        toastOptions={{
+          style: {
+            marginBottom: '2rem', // Add some bottom margin to prevent overlap with screen edge
+            zIndex: 9999 // Ensure notifications are above other content
+          }
+        }} 
+      /> */}
+      
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold mb-2">Settings</h1>
+        <p className="text-gray-600">
+          Manage your account settings and preferences
+        </p>
+      </div>
+
+      {/* Profile Section */}
+      <section className="bg-white rounded-lg shadow mb-8">
+        <div className="p-6 border-b border-gray-200">
+          <h2 className="text-xl font-semibold">Profile</h2>
+          <p className="text-gray-600 text-sm mt-1">
+            Update your personal information and profile photo
+          </p>
+        </div>
+
+        <div className="p-6">
+          <div className="flex items-start gap-8">
+            {/* Avatar Upload */}
+            <div className="flex flex-col items-center gap-2">
+              <div 
+                className="relative group cursor-pointer"
+                onClick={handleAvatarClick}
+              >
                 <img
                   src={avatar}
                   alt="Profile"
-                  className="h-16 w-16 rounded-full object-cover"
+                  className="h-32 w-32 rounded-full object-cover ring-4 ring-white group-hover:ring-gray-100 transition-all duration-200"
                 />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-0 right-0 bg-gray-800 p-1.5 rounded-full text-white hover:bg-gray-700"
-                >
-                  <Camera className="h-4 w-4" />
-                </button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleAvatarChange}
-                  className="hidden"
-                  accept="image/*"
-                />
+                <div className="absolute inset-0 bg-black bg-opacity-40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <Camera className="h-8 w-8 text-white" />
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-medium">{name || 'Your Name'}</h3>
-                <p className="text-gray-500">{email}</p>
-              </div>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept="image/*"
+                className="hidden"
+              />
+              <p className="text-sm text-gray-500">Click to upload new photo</p>
             </div>
 
-            {/* Form Fields */}
-            <div className="grid grid-cols-1 gap-6 mt-4">
+            {/* Profile Form */}
+            <div className="flex-1 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Name
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Full Name
                 </label>
                 <input
                   type="text"
+                  id="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  id="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
                   Username
                 </label>
                 <input
                   type="text"
+                  id="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  disabled
-                  className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label htmlFor="company" className="block text-sm font-medium text-gray-700 mb-1">
                   Company
                 </label>
                 <input
                   type="text"
+                  id="company"
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
-            </div>
 
-            <div className="flex justify-end">
-              <button
-                onClick={handleSaveProfile}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              >
-                <Save className="h-4 w-4" />
-                <span>Save Changes</span>
-              </button>
+              <div className="pt-4">
+                <button
+                  onClick={handleSaveProfile}
+                  className="bg-orange-500 text-white px-6 py-2 rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  Save Changes
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Subscription Section */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-2xl font-bold mb-6">Subscription</h2>
-          <div className="grid md:grid-cols-3 gap-6">
+      {/* Payment & Billing Section */}
+      <section className="bg-white rounded-lg shadow">
+        <div className="p-6 border-b border-gray-200">
+          <h2 className="text-xl font-semibold">Payment & Billing</h2>
+          <p className="text-gray-600 text-sm mt-1">
+            Manage your subscription and billing preferences
+          </p>
+        </div>
+
+        {/* Subscription Plans */}
+        <div className="p-6 border-b border-gray-200">
+          <h3 className="text-lg font-semibold mb-4">Subscription Plans</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {plans.map((plan) => (
               <div
                 key={plan.id}
                 className={`border rounded-lg p-6 ${
-                  plan.current
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200'
+                  plan.current ? 'border-orange-500 bg-orange-50' : 'hover:border-gray-300'
                 }`}
               >
-                <h3 className="text-lg font-bold">{plan.name}</h3>
-                <p className="text-3xl font-bold mt-2">${plan.price}</p>
-                <p className="text-gray-500 text-sm mb-4">/month</p>
-                <ul className="space-y-2">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h4 className="text-lg font-semibold">{plan.name}</h4>
+                    <p className="text-2xl font-bold mt-2">${plan.price}<span className="text-sm font-normal text-gray-600">/mo</span></p>
+                  </div>
+                  {plan.current && (
+                    <span className="px-3 py-1 bg-orange-500 text-white text-xs rounded-full">
+                      Current
+                    </span>
+                  )}
+                </div>
+
+                <ul className="space-y-3 mb-6">
                   {plan.features.map((feature, index) => (
-                    <li key={index} className="text-sm text-gray-600">
-                      ✓ {feature}
+                    <li key={index} className="flex items-center text-sm text-gray-600">
+                      <span className="mr-2">•</span>
+                      {feature}
                     </li>
                   ))}
                 </ul>
+
                 <button
-                  className={`mt-4 w-full py-2 rounded-md ${
+                  onClick={() => handlePlanChange(plan.id)}
+                  className={`w-full py-2 rounded-lg ${
                     plan.current
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700'
+                      ? 'bg-gray-100 text-gray-600 cursor-not-allowed'
+                      : 'bg-orange-500 text-white hover:bg-orange-600'
                   }`}
+                  disabled={plan.current}
                 >
                   {plan.current ? 'Current Plan' : 'Upgrade'}
                 </button>
@@ -264,48 +301,43 @@ export default function Settings() {
         </div>
 
         {/* Billing History */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Billing History</h2>
-            <button className="flex items-center space-x-2 text-gray-600 hover:text-gray-800">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">Billing History</h3>
+            <button className="text-orange-500 hover:text-orange-600 flex items-center gap-2">
               <Download className="h-4 w-4" />
-              <span>Download All</span>
+              Download All
             </button>
           </div>
+
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="w-full">
               <thead>
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Description
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Amount
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
+                <tr className="text-left border-b border-gray-200">
+                  <th className="pb-3 text-sm font-medium text-gray-500">Date</th>
+                  <th className="pb-3 text-sm font-medium text-gray-500">Description</th>
+                  <th className="pb-3 text-sm font-medium text-gray-500">Amount</th>
+                  <th className="pb-3 text-sm font-medium text-gray-500">Status</th>
+                  <th className="pb-3 text-sm font-medium text-gray-500">Invoice</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody>
                 {transactions.map((transaction) => (
-                  <tr key={transaction.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {transaction.date}
+                  <tr key={transaction.id} className="border-b border-gray-100">
+                    <td className="py-4 text-sm">
+                      {new Date(transaction.date).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {transaction.description}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      ${transaction.amount}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                    <td className="py-4 text-sm">{transaction.description}</td>
+                    <td className="py-4 text-sm">${transaction.amount}</td>
+                    <td className="py-4">
+                      <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
                         {transaction.status}
                       </span>
+                    </td>
+                    <td className="py-4">
+                      <button className="text-orange-500 hover:text-orange-600">
+                        <Download className="h-4 w-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -313,7 +345,7 @@ export default function Settings() {
             </table>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { supabase } from '../lib/supabase';
 import { User } from '@supabase/supabase-js';
 
 interface AuthState {
@@ -17,61 +18,59 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
 
   signIn: async (email: string, password: string) => {
-    const response = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'signIn',
-        payload: { email, password }
-      })
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
+    if (error) throw error;
     set({ user: data.user });
   },
 
   signUp: async (email: string, password: string, username: string) => {
-    const response = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'signUp',
-        payload: { email, password, username }
-      })
+    // Sign up the user
+    const { error: signUpError, data } = await supabase.auth.signUp({
+      email,
+      password,
     });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
-    set({ user: data.user });
+  
+    if (signUpError) throw signUpError;
+  
+    if (data.user) {
+      // Insert profile with email and username into profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([{ id: data.user.id, username, email }]);  // Add email here
+  
+      if (profileError) throw profileError;
+      set({ user: data.user });
+    }
   },
+  
 
   signOut: async () => {
-    const response = await fetch('/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'signOut' })
-    });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error);
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     set({ user: null, profile: null });
   },
 
   fetchProfile: async () => {
     try {
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'getProfile' })
-      });
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      set({ user: data.user, profile: data.profile, isLoading: false });
+        set({ user, profile, isLoading: false });
+      } else {
+        set({ user: null, profile: null, isLoading: false });
+      }
     } catch (error) {
       set({ user: null, profile: null, isLoading: false });
       throw error;
     }
-  }
+  },
 }));

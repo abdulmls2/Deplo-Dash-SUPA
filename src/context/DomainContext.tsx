@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface Domain {
   id: string;
@@ -24,20 +25,21 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const fetchDomains = async () => {
       try {
-        const response = await fetch('/api/supabase', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'getDomains' })
-        });
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error);
+        const { data: domains, error } = await supabase
+          .from('domains')
+          .select('*')
+          .eq('profile_id', user.id)
+          .order('created_at', { ascending: true });
 
-        const domains = data.domains || [];
-        setDomains(domains);
+        if (error) throw error;
+
+        setDomains(domains || []);
         
         // Set the first domain as current if none is selected
-        if (domains.length > 0 && !currentDomain) {
+        if (domains && domains.length > 0 && !currentDomain) {
           const savedDomainId = localStorage.getItem('selectedDomainId');
           const savedDomain = savedDomainId 
             ? domains.find(d => d.id === savedDomainId)
@@ -64,27 +66,18 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     if (!currentDomain) return;
 
     try {
-      const response = await fetch('/api/supabase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'updateDomain',
-          payload: {
-            id: currentDomain.id,
-            name
-          }
-        })
-      });
+      const { error } = await supabase
+        .from('domains')
+        .update({ name, updated_at: new Date().toISOString() })
+        .eq('id', currentDomain.id);
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      if (error) throw error;
 
-      const updatedDomain = data.domain;
-      setCurrentDomain(prev => prev ? { ...prev, name: updatedDomain.name } : null);
+      setCurrentDomain(prev => prev ? { ...prev, name } : null);
       setDomains(prev => 
         prev.map(domain => 
           domain.id === currentDomain.id 
-            ? { ...domain, name: updatedDomain.name }
+            ? { ...domain, name }
             : domain
         )
       );

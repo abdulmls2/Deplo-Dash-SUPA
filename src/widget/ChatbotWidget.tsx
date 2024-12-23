@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Paperclip, X, Archive, MessageSquare, MessageSquarePlus, ChevronLeft, RefreshCw, ThumbsDown, Minus, ThumbsUp, UserRound, Hourglass } from 'lucide-react';
-import { getMessages, getConversations, updateConversation, createMessage } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
 import { useConversationStore } from '../lib/store/conversationStore';
 import { useChatbotStore } from '../lib/store/chatbotStore';
@@ -47,71 +47,114 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const { sendMessage: chatbotSendMessage } = useChatbotStore();
   const [isRequestingLiveChat, setIsRequestingLiveChat] = useState(false);
 
+  // Add this helper function at the top of the component
   const isMessageDuplicate = (newMsg: Message, existingMessages: Message[]) => {
     return existingMessages.some(msg => 
+      // Check for exact ID match
       msg.id === newMsg.id ||
+      // Check for temp ID being replaced by real ID
       (msg.id.startsWith('temp-') && msg.content === newMsg.content && msg.sender_type === newMsg.sender_type) ||
+      // Check for exact content match within a small time window (2 seconds)
       (msg.content === newMsg.content && 
        msg.sender_type === newMsg.sender_type && 
        Math.abs(new Date(msg.created_at).getTime() - new Date(newMsg.created_at).getTime()) < 2000)
     );
   };
 
-  const fetchMessages = async (convId: string) => {
-    try {
-      const messagesData = await getMessages(convId);
-      setMessages(messagesData);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      setError('Failed to load messages');
-    }
-  };
-
-  const fetchConversations = async () => {
+  // Subscribe to new conversations
+  useEffect(() => {
     if (!sessionId) return;
-    try {
-      const conversationsData = await getConversations(sessionId);
-      setConversations(conversationsData);
-    } catch (error) {
-      console.error('Error fetching conversations:', error);
-      setError('Failed to load conversations');
-    }
-  };
 
-  const handleArchive = async () => {
-    if (!conversationId) return;
-    try {
-      await updateConversation(conversationId, {
-        status: 'archived',
-        last_message_at: new Date().toISOString()
-      });
-      setIsArchived(true);
-      await fetchConversations();
-    } catch (error) {
-      console.error('Error archiving conversation:', error);
-      setError('Failed to archive conversation');
-    }
-  };
+    const channel = supabase
+      .channel('new-conversations')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'conversations',
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const newConversation = payload.new as Conversation;
+            setConversations(prevConversations => [newConversation, ...prevConversations]);
+          }
+        }
+      )
+      .subscribe();
 
-  const handleRating = async (rating: 'bad' | 'ok' | 'good') => {
-    if (!conversationId) return;
-    try {
-      await updateConversation(conversationId, {
-        rating,
-        last_message_at: new Date().toISOString()
-      });
-      await fetchConversations();
-    } catch (error) {
-      console.error('Error updating rating:', error);
-      setError('Failed to update rating');
-    }
-  };
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [sessionId]);
+
+  // Subscribe to conversation updates
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const channel = supabase
+      .channel('conversations-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'UPDATE') {
+            // Update the conversation in the list
+            setConversations(prevConversations => 
+              prevConversations.map(conv => 
+                conv.id === payload.new.id ? { ...conv, ...payload.new } : conv
+              )
+            );
+
+            // If this is the current conversation, update archived status
+            if (payload.new.id === conversationId) {
+              setIsArchived(payload.new.status === 'archived');
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [sessionId, conversationId]);
 
   useEffect(() => {
     if (isExpanded && (messages.length > 0 || isArchived)) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isExpanded, isArchived]);
+
+  // Load conversation history
+  const loadConversationHistory = async () => {
+    if (!sessionId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('last_message_at', { ascending: false });
+
+      if (error) throw error;
+      setConversations(data || []);
+    } catch (error) {
+      console.error('Error loading conversation history:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (sessionId) {
+      loadConversationHistory();
+    }
+  }, [sessionId]);
 
   const handleStartNewConversation = async () => {
     setMessages([]);
@@ -136,7 +179,17 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       setConversationRating(null);
       setIsRequestingLiveChat(false); // Reset live chat request state
       
-      await fetchMessages(conversation.id);
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversation.id)
+        .order('created_at', { ascending: true });
+
+      if (messages) {
+        setMessages(messages);
+        processedMessageIds.clear();
+        messages.forEach(msg => processedMessageIds.add(msg.id));
+      }
       
       if (conversation.status === 'archived') {
         setConversationRating(conversation.rating || null);
@@ -148,77 +201,319 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     }
   };
 
+  // Subscribe to conversation status changes
   useEffect(() => {
-    if (sessionId) {
-      fetchConversations();
+    if (!conversationId) return;
+
+    const channel = supabase
+      .channel(`conversation-status:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `id=eq.${conversationId}`,
+        },
+        (payload) => {
+          if (payload.new.status === 'archived') {
+            setIsArchived(true);
+            playNotificationSound();
+          } else {
+            setIsArchived(false);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [conversationId]);
+
+  // Initialize notification sound
+  useEffect(() => {
+    notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
+  }, []);
+
+  const playNotificationSound = () => {
+    if (notificationSound.current) {
+      notificationSound.current.currentTime = 0; // Reset sound to start
+      notificationSound.current.play().catch(error => {
+        console.log('Error playing notification:', error);
+      });
     }
-  }, [sessionId]);
+  };
+
+  // Add real-time subscription for messages
+  useEffect(() => {
+    if (!conversationId) {
+      console.log('No conversation ID yet, skipping subscription');
+      return;
+    }
+
+    console.log('Setting up subscription for conversation:', conversationId);
+
+    const channel = supabase.channel(`messages-${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`
+        },
+        (payload) => {
+          console.log('Received real-time event:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            const newMessage = payload.new as Message;
+            console.log('New message:', newMessage);
+
+            setMessages(prevMessages => {
+              // Use the enhanced duplicate detection
+              if (isMessageDuplicate(newMessage, prevMessages)) {
+                console.log('Message already exists, skipping');
+                return prevMessages;
+              }
+
+              // If this is a real message replacing a temp message, remove the temp message
+              const updatedMessages = prevMessages.filter(msg => 
+                !(msg.id.startsWith('temp-') && 
+                  msg.content === newMessage.content && 
+                  msg.sender_type === newMessage.sender_type)
+              );
+
+              // Add message ID to processed set
+              processedMessageIds.add(newMessage.id);
+
+              // Play sound for all bot messages, regardless of widget state
+              if (newMessage.sender_type === 'bot') {
+                playNotificationSound();
+              }
+
+              console.log('Adding new message to state');
+              return [...updatedMessages, newMessage];
+            });
+          }
+        }
+      );
+
+    channel.subscribe((status) => {
+      console.log('Subscription status:', status);
+    });
+
+    return () => {
+      console.log('Cleaning up subscription for conversation:', conversationId);
+      channel.unsubscribe();
+    };
+  }, [conversationId, isExpanded]);
+
+  useEffect(() => {
+    // Initialize session and load existing conversation
+    const initializeSession = async () => {
+      let currentSessionId = localStorage.getItem(SESSION_KEY);
+      
+      if (!currentSessionId) {
+        // Use the global crypto object
+        currentSessionId = window.crypto.randomUUID();
+        localStorage.setItem(SESSION_KEY, currentSessionId);
+      }
+      
+      setSessionId(currentSessionId);
+      await loadExistingConversation(currentSessionId);
+    };
+
+    initializeSession();
+  }, []);
+
+  const loadExistingConversation = async (currentSessionId: string) => {
+    try {
+      // First check if there are any conversations
+      const { data: conversations, error: fetchError } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('session_id', currentSessionId)
+        .eq('status', 'active')
+        .order('last_message_at', { ascending: false })
+        .limit(1);
+
+      if (fetchError) throw fetchError;
+      
+      // If no conversations found, return early
+      if (!conversations || conversations.length === 0) {
+        console.log('No active conversations found for this session');
+        return;
+      }
+
+      const conversation = conversations[0];
+
+      // Check if conversation has expired
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() - CONVERSATION_EXPIRY_DAYS);
+      
+      if (new Date(conversation.last_message_at) < expiryDate) {
+        // Conversation has expired, archive it
+        await supabase
+          .from('conversations')
+          .update({ status: 'archived' })
+          .eq('id', conversation.id);
+        return;
+      }
+
+      setConversationId(conversation.id);
+
+      // Load existing messages
+      const { data: existingMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversation.id)
+        .order('created_at', { ascending: true });
+
+      if (existingMessages) {
+        const uniqueMessages = existingMessages.filter(msg => {
+          if (processedMessageIds.has(msg.id)) {
+            return false;
+          }
+          processedMessageIds.add(msg.id);
+          return true;
+        });
+        setMessages(uniqueMessages);
+      }
+    } catch (error) {
+      // Only log actual errors, not "no results" cases
+      if (error instanceof Error && !error.message.includes('no rows returned')) {
+        console.error('Error loading existing conversation:', error);
+        setError('Failed to load conversation history');
+      }
+    }
+  };
 
   const createConversation = async () => {
     try {
-      // Get or create anonymous user
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action: 'signInAnonymously' }),
-      });
+      const { data: { user } } = await supabase.auth.getUser();
       
-      const { user } = await response.json();
-      if (!user) throw new Error('Failed to create anonymous session');
+      // If no user, create anonymous session
+      if (!user) {
+        await supabase.auth.signInAnonymously();
+        const { data: { user: anonUser } } = await supabase.auth.getUser();
+        if (!anonUser) throw new Error('Failed to create anonymous session');
+        
+        const { data, error } = await supabase
+          .from('conversations')
+          .insert({
+            domain_id: domainId,
+            user_id: anonUser.id,
+            session_id: sessionId,
+            last_message_at: new Date().toISOString(),
+            status: 'active'
+          })
+          .select()
+          .single();
 
-      // Create conversation
-      const conversationData = {
-        domain_id: domainId,
-        user_id: user.id,
-        session_id: sessionId,
-        last_message_at: new Date().toISOString(),
-        status: 'active'
-      };
+        if (error) throw error;
+        return data.id;
+      }
 
-      const createResponse = await fetch('/api/supabase', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'createConversation',
-          payload: { conversation: conversationData }
-        }),
-      });
+      // If user exists, proceed with user.id
+      const { data, error } = await supabase
+        .from('conversations')
+        .insert({
+          domain_id: domainId,
+          user_id: user.id,
+          session_id: sessionId,
+          last_message_at: new Date().toISOString(),
+          status: 'active'
+        })
+        .select()
+        .single();
 
-      const { conversation } = await createResponse.json();
-      return conversation.id;
+      if (error) throw error;
+      return data.id;
     } catch (error) {
       console.error('Error creating conversation:', error);
       throw error;
     }
   };
 
-  const fetchConfig = async () => {
+  const sendMessage = async (content: string) => {
     try {
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'getDomainSettings',
-          domainId
-        }),
+      setIsLoading(true);
+      setError(null);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        await supabase.auth.signInAnonymously();
+      }
+      
+      // Create a new conversation if one doesn't exist
+      const currentConversationId = conversationId || await createConversation();
+      if (!conversationId) {
+        setConversationId(currentConversationId);
+      }
+
+      // Create a temporary message object for immediate display
+      const tempMessage: Message = {
+        id: `temp-${Date.now()}`,
+        content: content,
+        sender_type: 'user',
+        created_at: new Date().toISOString(),
+      };
+
+      // Add to messages only if it's not a duplicate
+      setMessages(prevMessages => {
+        if (isMessageDuplicate(tempMessage, prevMessages)) {
+          return prevMessages;
+        }
+        return [...prevMessages, tempMessage];
       });
 
-      const { settings } = await response.json();
-      
-      if (settings) {
-        setConfig({
-          chatbotName: settings.chatbot_name,
-          greetingMessage: settings.greeting_message || 'Hello! How can I help you today?',
-          color: settings.primary_color || '#FF6B00',
-          headerTextColor: settings.header_text_color || '#000000'
-        });
-      } else {
+      // Send message through chatbot store which will handle OpenAI integration
+      await chatbotSendMessage(content, currentConversationId);
+
+      setMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setError('Failed to send message. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim() || isLoading) return;
+    await sendMessage(message.trim());
+  };
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const { data } = await supabase
+          .from('domain_settings')
+          .select('*')
+          .eq('domain_id', domainId)
+          .single();
+
+        if (data) {
+          setConfig({
+            chatbotName: data.chatbot_name,
+            greetingMessage: data.greeting_message || 'Hello! How can I help you today?',
+            color: data.primary_color || '#FF6B00',
+            headerTextColor: data.header_text_color || '#000000'
+          });
+        } else {
+          // Use default config if no settings exist
+          setConfig({
+            chatbotName: 'Friendly Assistant',
+            greetingMessage: 'Hello! How can I help you today?',
+            color: '#FF6B00',
+            headerTextColor: '#000000'
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching chatbot config:', error);
+        // Use default config on error
         setConfig({
           chatbotName: 'Friendly Assistant',
           greetingMessage: 'Hello! How can I help you today?',
@@ -226,18 +521,8 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
           headerTextColor: '#000000'
         });
       }
-    } catch (error) {
-      console.error('Error fetching chatbot config:', error);
-      setConfig({
-        chatbotName: 'Friendly Assistant',
-        greetingMessage: 'Hello! How can I help you today?',
-        color: '#FF6B00',
-        headerTextColor: '#000000'
-      });
-    }
-  };
+    };
 
-  useEffect(() => {
     if (domainId) {
       fetchConfig();
     }
@@ -254,13 +539,25 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     backgroundColor: config.color,
   };
 
+  // Add this function near your other handler functions
   const handleRefreshChat = async () => {
     if (conversationId) {
       try {
+        // Clear current messages
         setMessages([]);
         processedMessageIds.clear();
         
-        await fetchMessages(conversationId);
+        // Reload messages for current conversation
+        const { data: messages } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: true });
+
+        if (messages) {
+          setMessages(messages);
+          messages.forEach(msg => processedMessageIds.add(msg.id));
+        }
       } catch (error) {
         console.error('Error refreshing chat:', error);
         setError('Failed to refresh chat');
@@ -271,18 +568,46 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const [conversationRating, setConversationRating] = useState<'bad' | 'ok' | 'good' | null>(null);
 
   const handleRateConversation = async (rating: 'bad' | 'ok' | 'good') => {
-    await handleRating(rating);
+    if (!conversationId) return;
+
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ rating })
+        .eq('id', conversationId);
+
+      if (error) throw error;
+
+      setConversationRating(rating);
+      
+      // Optimistically update the local state
+      setConversations(prevConversations => 
+        prevConversations.map(conv => 
+          conv.id === conversationId ? { ...conv, rating } : conv
+        )
+      );
+    } catch (error) {
+      console.error('Error rating conversation:', error);
+    }
   };
 
   const handleRequestLiveChat = async () => {
     if (!conversationId) return;
     
     try {
-      await updateConversation(conversationId, {
-        requested_live_at: new Date().toISOString()
-      });
+      // Update conversation with live chat request
+      const { error } = await supabase
+        .from('conversations')
+        .update({ 
+          requested_live_at: new Date().toISOString()
+        })
+        .eq('id', conversationId);
+
+      if (error) throw error;
+
       setIsRequestingLiveChat(true);
       
+      // Add system message about live chat request
       const systemMessage = {
         id: `temp-${Date.now()}`,
         content: "I'll connect you with a live agent. Please wait a moment while I transfer your chat.",
@@ -296,80 +621,6 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       console.error('Error requesting live chat:', error);
       setError('Failed to request live chat. Please try again.');
     }
-  };
-
-  useEffect(() => {
-    const initializeSession = async () => {
-      let currentSessionId = localStorage.getItem(SESSION_KEY);
-      
-      if (!currentSessionId) {
-        currentSessionId = window.crypto.randomUUID();
-        localStorage.setItem(SESSION_KEY, currentSessionId);
-      }
-      
-      setSessionId(currentSessionId);
-    };
-
-    initializeSession();
-  }, []);
-
-  const sendMessage = async (content: string) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const { data: { user } } = await fetch('/api/auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action: 'getUser' }),
-      }).then(response => response.json());
-
-      if (!user) {
-        await fetch('/api/auth', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ action: 'signInAnonymously' }),
-        });
-      }
-
-      const currentConversationId = conversationId || await createConversation();
-      if (!conversationId) {
-        setConversationId(currentConversationId);
-      }
-
-      const tempMessage: Message = {
-        id: `temp-${Date.now()}`,
-        content: content,
-        sender_type: 'user',
-        created_at: new Date().toISOString(),
-      };
-
-      setMessages(prevMessages => {
-        if (isMessageDuplicate(tempMessage, prevMessages)) {
-          return prevMessages;
-        }
-        return [...prevMessages, tempMessage];
-      });
-
-      await chatbotSendMessage(content, currentConversationId);
-
-      setMessage('');
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setError('Failed to send message. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim() || isLoading) return;
-    await sendMessage(message.trim());
   };
 
   return (
@@ -472,107 +723,108 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
                 )}
               </div>
             ) : (
-              <div className="space-y-4">
-                {/* Welcome Message */}
-                {view === 'chat' && (
-                  <div className="flex gap-2">
+            <div className="space-y-4">
+              {/* Welcome Message */}
+              {/* Always show greeting message in chat view */}
+              {view === 'chat' && (
+                <div className="flex gap-2">
+                <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 flex items-center justify-center">
+                  🤖
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm max-w-[80%]">
+                  <p className="text-sm">{config.greetingMessage}</p>
+                  <span className="text-xs text-gray-500 mt-1 block">
+                    {format(new Date(), 'h:mm a')}
+                  </span>
+                </div>
+              </div>
+              )}
+              
+              {/* Messages */}
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex gap-2 ${msg.sender_type === 'user' ? 'justify-end' : ''}`}
+                >
+                  {msg.sender_type === 'bot' && (
                     <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 flex items-center justify-center">
                       🤖
                     </div>
-                    <div className="bg-white p-3 rounded-lg shadow-sm max-w-[80%]">
-                      <p className="text-sm">{config.greetingMessage}</p>
-                      <span className="text-xs text-gray-500 mt-1 block">
-                        {format(new Date(), 'h:mm a')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Messages */}
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex gap-2 ${msg.sender_type === 'user' ? 'justify-end' : ''}`}
+                  )}
+                  <div 
+                    className={`p-3 rounded-lg max-w-[80%] ${
+                      msg.sender_type === 'user' 
+                        ? 'bg-orange-500 text-white ml-auto' 
+                        : 'bg-white shadow-sm'
+                    }`}
                   >
-                    {msg.sender_type === 'bot' && (
-                      <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 flex items-center justify-center">
-                        🤖
+                    <p className="text-sm">{msg.content}</p>
+                    <span className={`text-xs mt-1 block ${
+                      msg.sender_type === 'user' ? 'text-orange-100' : 'text-gray-500'
+                    }`}>
+                      {format(new Date(msg.created_at), 'h:mm a')}
+                    </span>
+                  </div>
+                  {msg.sender_type === 'user' && (
+                    <div className="w-8 h-8 rounded-full bg-orange-100 flex-shrink-0 flex items-center justify-center">
+                      👤
+                    </div>
+                  )}
+                </div>
+              ))}
+              {isArchived && (
+                <div className="flex flex-col items-center gap-3 my-4">
+                  <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center gap-2 text-gray-600">
+                    <Archive className="h-4 w-4" />
+                    <span className="text-sm">This conversation has been archived</span>
+                  </div>
+                  
+                  {!conversationRating && (
+                    <div className="flex flex-col items-center gap-2">
+                      <p className="text-sm text-gray-600">How was this conversation?</p>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleRateConversation('bad')}
+                          className="flex items-center gap-1 px-4 py-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                        >
+                          <ThumbsDown className="h-4 w-4" />
+                          <span>Bad</span>
+                        </button>
+                        <button
+                          onClick={() => handleRateConversation('ok')}
+                          className="flex items-center gap-1 px-4 py-2 rounded-lg bg-yellow-100 text-yellow-600 hover:bg-yellow-200 transition-colors"
+                        >
+                          <Minus className="h-4 w-4" />
+                          <span>OK</span>
+                        </button>
+                        <button
+                          onClick={() => handleRateConversation('good')}
+                          className="flex items-center gap-1 px-4 py-2 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors"
+                        >
+                          <ThumbsUp className="h-4 w-4" />
+                          <span>Good</span>
+                        </button>
                       </div>
-                    )}
-                    <div 
-                      className={`p-3 rounded-lg max-w-[80%] ${
-                        msg.sender_type === 'user' 
-                          ? 'bg-orange-500 text-white ml-auto' 
-                          : 'bg-white shadow-sm'
-                      }`}
-                    >
-                      <p className="text-sm">{msg.content}</p>
-                      <span className={`text-xs mt-1 block ${
-                        msg.sender_type === 'user' ? 'text-orange-100' : 'text-gray-500'
+                    </div>
+                  )}
+                  {conversationRating && (
+                    <div className="flex flex-col items-center gap-2 text-center">
+                      <span className="text-sm text-gray-600">You rated this conversation:</span>
+                      <span className={`font-medium ${
+                        conversationRating === 'bad' ? 'text-red-600' :
+                        conversationRating === 'ok' ? 'text-yellow-600' :
+                        'text-green-600'
                       }`}>
-                        {format(new Date(msg.created_at), 'h:mm a')}
+                        {conversationRating === 'bad' ? 'Bad 👎' : 
+                         conversationRating === 'ok' ? 'OK 😐' : 
+                         'Good 👍'}
                       </span>
                     </div>
-                    {msg.sender_type === 'user' && (
-                      <div className="w-8 h-8 rounded-full bg-orange-100 flex-shrink-0 flex items-center justify-center">
-                        👤
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {isArchived && (
-                  <div className="flex flex-col items-center gap-3 my-4">
-                    <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center gap-2 text-gray-600">
-                      <Archive className="h-4 w-4" />
-                      <span className="text-sm">This conversation has been archived</span>
-                    </div>
-                    
-                    {!conversationRating && (
-                      <div className="flex flex-col items-center gap-2">
-                        <p className="text-sm text-gray-600">How was this conversation?</p>
-                        <div className="flex gap-3">
-                          <button
-                            onClick={() => handleRateConversation('bad')}
-                            className="flex items-center gap-1 px-4 py-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
-                          >
-                            <ThumbsDown className="h-4 w-4" />
-                            <span>Bad</span>
-                          </button>
-                          <button
-                            onClick={() => handleRateConversation('ok')}
-                            className="flex items-center gap-1 px-4 py-2 rounded-lg bg-yellow-100 text-yellow-600 hover:bg-yellow-200 transition-colors"
-                          >
-                            <Minus className="h-4 w-4" />
-                            <span>OK</span>
-                          </button>
-                          <button
-                            onClick={() => handleRateConversation('good')}
-                            className="flex items-center gap-1 px-4 py-2 rounded-lg bg-green-100 text-green-600 hover:bg-green-200 transition-colors"
-                          >
-                            <ThumbsUp className="h-4 w-4" />
-                            <span>Good</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {conversationRating && (
-                      <div className="flex flex-col items-center gap-2 text-center">
-                        <span className="text-sm text-gray-600">You rated this conversation:</span>
-                        <span className={`font-medium ${
-                          conversationRating === 'bad' ? 'text-red-600' :
-                          conversationRating === 'ok' ? 'text-yellow-600' :
-                          'text-green-600'
-                        }`}>
-                          {conversationRating === 'bad' ? 'Bad 👎' : 
-                           conversationRating === 'ok' ? 'OK 😐' : 
-                           'Good 👍'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
+                  )}
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
             )}
           </div>
 
