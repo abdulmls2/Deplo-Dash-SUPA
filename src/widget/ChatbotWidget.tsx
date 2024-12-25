@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Paperclip, X, Archive, MessageSquare, MessageSquarePlus, ChevronLeft, RefreshCw, ThumbsDown, Minus, ThumbsUp, UserRound, Hourglass } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
 import { useConversationStore } from '../lib/store/conversationStore';
 import { useChatbotStore } from '../lib/store/chatbotStore';
@@ -47,114 +46,124 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const { sendMessage: chatbotSendMessage } = useChatbotStore();
   const [isRequestingLiveChat, setIsRequestingLiveChat] = useState(false);
 
-  // Add this helper function at the top of the component
   const isMessageDuplicate = (newMsg: Message, existingMessages: Message[]) => {
     return existingMessages.some(msg => 
-      // Check for exact ID match
       msg.id === newMsg.id ||
-      // Check for temp ID being replaced by real ID
       (msg.id.startsWith('temp-') && msg.content === newMsg.content && msg.sender_type === newMsg.sender_type) ||
-      // Check for exact content match within a small time window (2 seconds)
       (msg.content === newMsg.content && 
        msg.sender_type === newMsg.sender_type && 
        Math.abs(new Date(msg.created_at).getTime() - new Date(newMsg.created_at).getTime()) < 2000)
     );
   };
 
-  // Subscribe to new conversations
-  useEffect(() => {
-    if (!sessionId) return;
+  const fetchMessages = async (convId: string) => {
+    try {
+      const response = await fetch('/api/widget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'getMessages',
+          domainId,
+          payload: { conversationId: convId }
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      setMessages(data.messages);
+    } catch (error: any) {
+      setError(error.message);
+    }
+  };
 
-    const channel = supabase
-      .channel('new-conversations')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'conversations',
-          filter: `session_id=eq.${sessionId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newConversation = payload.new as Conversation;
-            setConversations(prevConversations => [newConversation, ...prevConversations]);
+  const sendMessage = async (content: string) => {
+    try {
+      const response = await fetch('/api/widget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sendMessage',
+          domainId,
+          payload: {
+            message: content,
+            sessionId,
+            conversationId
           }
-        }
-      )
-      .subscribe();
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      return data.message;
+    } catch (error: any) {
+      setError(error.message);
+      return null;
+    }
+  };
 
-    return () => {
-      channel.unsubscribe();
-    };
-  }, [sessionId]);
+  const fetchConversations = async () => {
+    try {
+      const response = await fetch('/api/widget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'getConversations',
+          domainId
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      setConversations(data.conversations);
+    } catch (error: any) {
+      setError(error.message);
+    }
+  };
 
-  // Subscribe to conversation updates
-  useEffect(() => {
-    if (!sessionId) return;
+  const createNewConversation = async () => {
+    try {
+      const response = await fetch('/api/widget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'createConversation',
+          domainId
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      return data.conversation;
+    } catch (error: any) {
+      setError(error.message);
+      return null;
+    }
+  };
 
-    const channel = supabase
-      .channel('conversations-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'conversations',
-          filter: `session_id=eq.${sessionId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'UPDATE') {
-            // Update the conversation in the list
-            setConversations(prevConversations => 
-              prevConversations.map(conv => 
-                conv.id === payload.new.id ? { ...conv, ...payload.new } : conv
-              )
-            );
-
-            // If this is the current conversation, update archived status
-            if (payload.new.id === conversationId) {
-              setIsArchived(payload.new.status === 'archived');
-            }
+  const updateConversation = async (convId: string, updates: any) => {
+    try {
+      const response = await fetch('/api/widget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updateConversation',
+          domainId,
+          payload: {
+            conversationId: convId,
+            updates
           }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
-  }, [sessionId, conversationId]);
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      return data.conversation;
+    } catch (error: any) {
+      setError(error.message);
+      return null;
+    }
+  };
 
   useEffect(() => {
     if (isExpanded && (messages.length > 0 || isArchived)) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isExpanded, isArchived]);
-
-  // Load conversation history
-  const loadConversationHistory = async () => {
-    if (!sessionId) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('conversations')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('last_message_at', { ascending: false });
-
-      if (error) throw error;
-      setConversations(data || []);
-    } catch (error) {
-      console.error('Error loading conversation history:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (sessionId) {
-      loadConversationHistory();
-    }
-  }, [sessionId]);
 
   const handleStartNewConversation = async () => {
     setMessages([]);
@@ -179,17 +188,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       setConversationRating(null);
       setIsRequestingLiveChat(false); // Reset live chat request state
       
-      const { data: messages } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversation.id)
-        .order('created_at', { ascending: true });
-
-      if (messages) {
-        setMessages(messages);
-        processedMessageIds.clear();
-        messages.forEach(msg => processedMessageIds.add(msg.id));
-      }
+      await fetchMessages(conversation.id);
       
       if (conversation.status === 'archived') {
         setConversationRating(conversation.rating || null);
@@ -201,113 +200,76 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     }
   };
 
-  // Subscribe to conversation status changes
   useEffect(() => {
-    if (!conversationId) return;
-
-    const channel = supabase
-      .channel(`conversation-status:${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'conversations',
-          filter: `id=eq.${conversationId}`,
-        },
-        (payload) => {
-          if (payload.new.status === 'archived') {
-            setIsArchived(true);
-            playNotificationSound();
-          } else {
-            setIsArchived(false);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
+    if (conversationId) {
+      fetchMessages(conversationId);
+    }
   }, [conversationId]);
 
-  // Initialize notification sound
   useEffect(() => {
-    notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
+    fetchConversations();
   }, []);
 
-  const playNotificationSound = () => {
-    if (notificationSound.current) {
-      notificationSound.current.currentTime = 0; // Reset sound to start
-      notificationSound.current.play().catch(error => {
-        console.log('Error playing notification:', error);
-      });
+  const handleRefreshChat = async () => {
+    if (conversationId) {
+      try {
+        // Clear current messages
+        setMessages([]);
+        processedMessageIds.clear();
+        
+        // Reload messages for current conversation
+        await fetchMessages(conversationId);
+      } catch (error) {
+        console.error('Error refreshing chat:', error);
+        setError('Failed to refresh chat');
+      }
     }
   };
 
-  // Add real-time subscription for messages
-  useEffect(() => {
-    if (!conversationId) {
-      console.log('No conversation ID yet, skipping subscription');
-      return;
+  const handleRateConversation = async (rating: 'bad' | 'ok' | 'good') => {
+    if (!conversationId) return;
+
+    try {
+      const conversation = await updateConversation(conversationId, { rating });
+      if (conversation) {
+        setConversationRating(rating);
+        
+        // Optimistically update the local state
+        setConversations(prevConversations => 
+          prevConversations.map(conv => 
+            conv.id === conversationId ? { ...conv, rating } : conv
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error rating conversation:', error);
     }
+  };
 
-    console.log('Setting up subscription for conversation:', conversationId);
+  const handleRequestLiveChat = async () => {
+    if (!conversationId) return;
+    
+    try {
+      // Update conversation with live chat request
+      const conversation = await updateConversation(conversationId, { requested_live_at: new Date().toISOString() });
+      if (conversation) {
+        setIsRequestingLiveChat(true);
+        
+        // Add system message about live chat request
+        const systemMessage = {
+          id: `temp-${Date.now()}`,
+          content: "I'll connect you with a live agent. Please wait a moment while I transfer your chat.",
+          sender_type: 'bot',
+          created_at: new Date().toISOString(),
+        };
 
-    const channel = supabase.channel(`messages-${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`
-        },
-        (payload) => {
-          console.log('Received real-time event:', payload);
-          
-          if (payload.eventType === 'INSERT') {
-            const newMessage = payload.new as Message;
-            console.log('New message:', newMessage);
-
-            setMessages(prevMessages => {
-              // Use the enhanced duplicate detection
-              if (isMessageDuplicate(newMessage, prevMessages)) {
-                console.log('Message already exists, skipping');
-                return prevMessages;
-              }
-
-              // If this is a real message replacing a temp message, remove the temp message
-              const updatedMessages = prevMessages.filter(msg => 
-                !(msg.id.startsWith('temp-') && 
-                  msg.content === newMessage.content && 
-                  msg.sender_type === newMessage.sender_type)
-              );
-
-              // Add message ID to processed set
-              processedMessageIds.add(newMessage.id);
-
-              // Play sound for all bot messages, regardless of widget state
-              if (newMessage.sender_type === 'bot') {
-                playNotificationSound();
-              }
-
-              console.log('Adding new message to state');
-              return [...updatedMessages, newMessage];
-            });
-          }
-        }
-      );
-
-    channel.subscribe((status) => {
-      console.log('Subscription status:', status);
-    });
-
-    return () => {
-      console.log('Cleaning up subscription for conversation:', conversationId);
-      channel.unsubscribe();
-    };
-  }, [conversationId, isExpanded]);
+        setMessages(prev => [...prev, systemMessage]);
+      }
+    } catch (error) {
+      console.error('Error requesting live chat:', error);
+      setError('Failed to request live chat. Please try again.');
+    }
+  };
 
   useEffect(() => {
     // Initialize session and load existing conversation
@@ -330,23 +292,25 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const loadExistingConversation = async (currentSessionId: string) => {
     try {
       // First check if there are any conversations
-      const { data: conversations, error: fetchError } = await supabase
-        .from('conversations')
-        .select('*')
-        .eq('session_id', currentSessionId)
-        .eq('status', 'active')
-        .order('last_message_at', { ascending: false })
-        .limit(1);
-
-      if (fetchError) throw fetchError;
+      const response = await fetch('/api/widget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'getConversations',
+          domainId,
+          payload: { sessionId: currentSessionId }
+        })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
       
       // If no conversations found, return early
-      if (!conversations || conversations.length === 0) {
+      if (!data.conversations || data.conversations.length === 0) {
         console.log('No active conversations found for this session');
         return;
       }
 
-      const conversation = conversations[0];
+      const conversation = data.conversations[0];
 
       // Check if conversation has expired
       const expiryDate = new Date();
@@ -354,129 +318,20 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       
       if (new Date(conversation.last_message_at) < expiryDate) {
         // Conversation has expired, archive it
-        await supabase
-          .from('conversations')
-          .update({ status: 'archived' })
-          .eq('id', conversation.id);
+        await updateConversation(conversation.id, { status: 'archived' });
         return;
       }
 
       setConversationId(conversation.id);
 
       // Load existing messages
-      const { data: existingMessages } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversation.id)
-        .order('created_at', { ascending: true });
-
-      if (existingMessages) {
-        const uniqueMessages = existingMessages.filter(msg => {
-          if (processedMessageIds.has(msg.id)) {
-            return false;
-          }
-          processedMessageIds.add(msg.id);
-          return true;
-        });
-        setMessages(uniqueMessages);
-      }
+      await fetchMessages(conversation.id);
     } catch (error) {
       // Only log actual errors, not "no results" cases
       if (error instanceof Error && !error.message.includes('no rows returned')) {
         console.error('Error loading existing conversation:', error);
         setError('Failed to load conversation history');
       }
-    }
-  };
-
-  const createConversation = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // If no user, create anonymous session
-      if (!user) {
-        await supabase.auth.signInAnonymously();
-        const { data: { user: anonUser } } = await supabase.auth.getUser();
-        if (!anonUser) throw new Error('Failed to create anonymous session');
-        
-        const { data, error } = await supabase
-          .from('conversations')
-          .insert({
-            domain_id: domainId,
-            user_id: anonUser.id,
-            session_id: sessionId,
-            last_message_at: new Date().toISOString(),
-            status: 'active'
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        return data.id;
-      }
-
-      // If user exists, proceed with user.id
-      const { data, error } = await supabase
-        .from('conversations')
-        .insert({
-          domain_id: domainId,
-          user_id: user.id,
-          session_id: sessionId,
-          last_message_at: new Date().toISOString(),
-          status: 'active'
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data.id;
-    } catch (error) {
-      console.error('Error creating conversation:', error);
-      throw error;
-    }
-  };
-
-  const sendMessage = async (content: string) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        await supabase.auth.signInAnonymously();
-      }
-      
-      // Create a new conversation if one doesn't exist
-      const currentConversationId = conversationId || await createConversation();
-      if (!conversationId) {
-        setConversationId(currentConversationId);
-      }
-
-      // Create a temporary message object for immediate display
-      const tempMessage: Message = {
-        id: `temp-${Date.now()}`,
-        content: content,
-        sender_type: 'user',
-        created_at: new Date().toISOString(),
-      };
-
-      // Add to messages only if it's not a duplicate
-      setMessages(prevMessages => {
-        if (isMessageDuplicate(tempMessage, prevMessages)) {
-          return prevMessages;
-        }
-        return [...prevMessages, tempMessage];
-      });
-
-      // Send message through chatbot store which will handle OpenAI integration
-      await chatbotSendMessage(content, currentConversationId);
-
-      setMessage('');
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setError('Failed to send message. Please try again.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -489,28 +344,22 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const { data } = await supabase
-          .from('domain_settings')
-          .select('*')
-          .eq('domain_id', domainId)
-          .single();
-
-        if (data) {
-          setConfig({
-            chatbotName: data.chatbot_name,
-            greetingMessage: data.greeting_message || 'Hello! How can I help you today?',
-            color: data.primary_color || '#FF6B00',
-            headerTextColor: data.header_text_color || '#000000'
-          });
-        } else {
-          // Use default config if no settings exist
-          setConfig({
-            chatbotName: 'Friendly Assistant',
-            greetingMessage: 'Hello! How can I help you today?',
-            color: '#FF6B00',
-            headerTextColor: '#000000'
-          });
-        }
+        const response = await fetch('/api/widget', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'getConfig',
+            domainId
+          })
+        });
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+        setConfig({
+          chatbotName: data.chatbotName,
+          greetingMessage: data.greetingMessage || 'Hello! How can I help you today?',
+          color: data.primaryColor || '#FF6B00',
+          headerTextColor: data.headerTextColor || '#000000'
+        });
       } catch (error) {
         console.error('Error fetching chatbot config:', error);
         // Use default config on error
@@ -539,89 +388,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     backgroundColor: config.color,
   };
 
-  // Add this function near your other handler functions
-  const handleRefreshChat = async () => {
-    if (conversationId) {
-      try {
-        // Clear current messages
-        setMessages([]);
-        processedMessageIds.clear();
-        
-        // Reload messages for current conversation
-        const { data: messages } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('conversation_id', conversationId)
-          .order('created_at', { ascending: true });
-
-        if (messages) {
-          setMessages(messages);
-          messages.forEach(msg => processedMessageIds.add(msg.id));
-        }
-      } catch (error) {
-        console.error('Error refreshing chat:', error);
-        setError('Failed to refresh chat');
-      }
-    }
-  };
-
   const [conversationRating, setConversationRating] = useState<'bad' | 'ok' | 'good' | null>(null);
-
-  const handleRateConversation = async (rating: 'bad' | 'ok' | 'good') => {
-    if (!conversationId) return;
-
-    try {
-      const { error } = await supabase
-        .from('conversations')
-        .update({ rating })
-        .eq('id', conversationId);
-
-      if (error) throw error;
-
-      setConversationRating(rating);
-      
-      // Optimistically update the local state
-      setConversations(prevConversations => 
-        prevConversations.map(conv => 
-          conv.id === conversationId ? { ...conv, rating } : conv
-        )
-      );
-    } catch (error) {
-      console.error('Error rating conversation:', error);
-    }
-  };
-
-  const handleRequestLiveChat = async () => {
-    if (!conversationId) return;
-    
-    try {
-      // Update conversation with live chat request
-      const { error } = await supabase
-        .from('conversations')
-        .update({ 
-          requested_live_at: new Date().toISOString()
-        })
-        .eq('id', conversationId);
-
-      if (error) throw error;
-
-      setIsRequestingLiveChat(true);
-      
-      // Add system message about live chat request
-      const systemMessage = {
-        id: `temp-${Date.now()}`,
-        content: "I'll connect you with a live agent. Please wait a moment while I transfer your chat.",
-        sender_type: 'bot',
-        created_at: new Date().toISOString(),
-      };
-
-      setMessages(prev => [...prev, systemMessage]);
-
-    } catch (error) {
-      console.error('Error requesting live chat:', error);
-      setError('Failed to request live chat. Please try again.');
-    }
-  };
 
   return (
     <div className="fixed bottom-6 right-6 flex flex-col items-end z-[9999]">
@@ -825,7 +592,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
               )}
               <div ref={messagesEndRef} />
             </div>
-            )}
+            )} 
           </div>
 
           {/* Input Area */}

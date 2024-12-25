@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import ChatbotWidget from './ChatbotWidget';
+import EmbeddedChatbotWidget from './EmbeddedChatbotWidget';
 import '../index.css';
 
 function initializeChatbot() {
@@ -14,7 +14,7 @@ function initializeChatbot() {
 
   // Render widget
   const root = createRoot(container);
-  root.render(<ChatbotWidget domainId={config.domainId} />);
+  root.render(<EmbeddedChatbotWidget domainId={config.domainId} />);
 }
 
 // Initialize when the script loads
