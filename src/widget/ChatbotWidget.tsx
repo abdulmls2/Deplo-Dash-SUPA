@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Paperclip, X, Archive, MessageSquare, MessageSquarePlus, ChevronLeft, RefreshCw, ThumbsDown, Minus, ThumbsUp, UserRound, Hourglass } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
-import { supabaseProxy } from '../lib/api';
+import { useConversationStore } from '../lib/store/conversationStore';
+import { useChatbotStore } from '../lib/store/chatbotStore';
 
 const SESSION_KEY = 'chatbot_session_id';
 const CONVERSATION_EXPIRY_DAYS = 180; // 6 months default expiry
@@ -42,13 +44,8 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isArchived, setIsArchived] = useState(false);
   const notificationSound = useRef<HTMLAudioElement | null>(null);
+  const { sendMessage: chatbotSendMessage } = useChatbotStore();
   const [isRequestingLiveChat, setIsRequestingLiveChat] = useState(false);
-  const [config, setConfig] = useState<ChatbotConfig>({
-    chatbotName: 'Chatbot',
-    greetingMessage: 'Hello! How can I help you today?',
-    color: '#FF6B00', 
-    headerTextColor: '#000000'
-  });
 
   // Add this helper function at the top of the component
   const isMessageDuplicate = (newMsg: Message, existingMessages: Message[]) => {
@@ -63,30 +60,6 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
        Math.abs(new Date(msg.created_at).getTime() - new Date(newMsg.created_at).getTime()) < 2000)
     );
   };
-
-  useEffect(() => {
-    if (isExpanded && (messages.length > 0 || isArchived)) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, isExpanded, isArchived]);
-
-  // Load conversation history
-  const loadConversationHistory = async () => {
-    if (!sessionId) return;
-    
-    try {
-      const data = await supabaseProxy.fetchConversations(sessionId);
-      setConversations(data);
-    } catch (error) {
-      console.error('Error loading conversation history:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (sessionId) {
-      loadConversationHistory();
-    }
-  }, [sessionId]);
 
   // Subscribe to new conversations
   useEffect(() => {
@@ -115,6 +88,118 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       channel.unsubscribe();
     };
   }, [sessionId]);
+
+  // Subscribe to conversation updates
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const channel = supabase
+      .channel('conversations-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'UPDATE') {
+            // Update the conversation in the list
+            setConversations(prevConversations => 
+              prevConversations.map(conv => 
+                conv.id === payload.new.id ? { ...conv, ...payload.new } : conv
+              )
+            );
+
+            // If this is the current conversation, update archived status
+            if (payload.new.id === conversationId) {
+              setIsArchived(payload.new.status === 'archived');
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [sessionId, conversationId]);
+
+  useEffect(() => {
+    if (isExpanded && (messages.length > 0 || isArchived)) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isExpanded, isArchived]);
+
+  // Load conversation history
+  const loadConversationHistory = async () => {
+    if (!sessionId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('last_message_at', { ascending: false });
+
+      if (error) throw error;
+      setConversations(data || []);
+    } catch (error) {
+      console.error('Error loading conversation history:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (sessionId) {
+      loadConversationHistory();
+    }
+  }, [sessionId]);
+
+  const handleStartNewConversation = async () => {
+    setMessages([]);
+    setConversationId(null);
+    setIsArchived(false);
+    setConversationRating(null);  // Reset conversation rating
+    setIsRequestingLiveChat(false); // Reset live chat request state
+    setView('chat');
+  };
+
+  const handleBackToHistory = () => {
+    setView('history');
+    setMessages([]);
+    setConversationId(null);
+    setIsArchived(false);
+  };
+
+  const handleSelectConversation = async (conversation: Conversation) => {
+    try {
+      setConversationId(conversation.id);
+      setIsArchived(conversation.status === 'archived');
+      setConversationRating(null);
+      setIsRequestingLiveChat(false); // Reset live chat request state
+      
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversation.id)
+        .order('created_at', { ascending: true });
+
+      if (messages) {
+        setMessages(messages);
+        processedMessageIds.clear();
+        messages.forEach(msg => processedMessageIds.add(msg.id));
+      }
+      
+      if (conversation.status === 'archived') {
+        setConversationRating(conversation.rating || null);
+      }
+      
+      setView('chat');
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+    }
+  };
 
   // Subscribe to conversation status changes
   useEffect(() => {
@@ -145,6 +230,20 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       channel.unsubscribe();
     };
   }, [conversationId]);
+
+  // Initialize notification sound
+  useEffect(() => {
+    notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
+  }, []);
+
+  const playNotificationSound = () => {
+    if (notificationSound.current) {
+      notificationSound.current.currentTime = 0; // Reset sound to start
+      notificationSound.current.play().catch(error => {
+        console.log('Error playing notification:', error);
+      });
+    }
+  };
 
   // Add real-time subscription for messages
   useEffect(() => {
@@ -210,61 +309,6 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     };
   }, [conversationId, isExpanded]);
 
-  const handleStartNewConversation = async () => {
-    setMessages([]);
-    setConversationId(null);
-    setIsArchived(false);
-    setConversationRating(null);  // Reset conversation rating
-    setIsRequestingLiveChat(false); // Reset live chat request state
-    setView('chat');
-  };
-
-  const handleBackToHistory = () => {
-    setView('history');
-    setMessages([]);
-    setConversationId(null);
-    setIsArchived(false);
-  };
-
-  const handleSelectConversation = async (conversation: Conversation) => {
-    try {
-      setConversationId(conversation.id);
-      setIsArchived(conversation.status === 'archived');
-      setConversationRating(null);
-      setIsRequestingLiveChat(false); // Reset live chat request state
-      
-      const messages = await supabaseProxy.fetchMessages(conversation.id);
-
-      if (messages) {
-        setMessages(messages);
-        processedMessageIds.clear();
-        messages.forEach(msg => processedMessageIds.add(msg.id));
-      }
-      
-      if (conversation.status === 'archived') {
-        setConversationRating(conversation.rating || null);
-      }
-      
-      setView('chat');
-    } catch (error) {
-      console.error('Error loading conversation:', error);
-    }
-  };
-
-  // Initialize notification sound
-  useEffect(() => {
-    notificationSound.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
-  }, []);
-
-  const playNotificationSound = () => {
-    if (notificationSound.current) {
-      notificationSound.current.currentTime = 0; // Reset sound to start
-      notificationSound.current.play().catch(error => {
-        console.log('Error playing notification:', error);
-      });
-    }
-  };
-
   useEffect(() => {
     // Initialize session and load existing conversation
     const initializeSession = async () => {
@@ -285,7 +329,16 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
 
   const loadExistingConversation = async (currentSessionId: string) => {
     try {
-      const conversations = await supabaseProxy.fetchConversations(currentSessionId);
+      // First check if there are any conversations
+      const { data: conversations, error: fetchError } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('session_id', currentSessionId)
+        .eq('status', 'active')
+        .order('last_message_at', { ascending: false })
+        .limit(1);
+
+      if (fetchError) throw fetchError;
       
       // If no conversations found, return early
       if (!conversations || conversations.length === 0) {
@@ -301,14 +354,21 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       
       if (new Date(conversation.last_message_at) < expiryDate) {
         // Conversation has expired, archive it
-        await supabaseProxy.updateConversation(conversation.id, { status: 'archived' });
+        await supabase
+          .from('conversations')
+          .update({ status: 'archived' })
+          .eq('id', conversation.id);
         return;
       }
 
       setConversationId(conversation.id);
 
       // Load existing messages
-      const existingMessages = await supabaseProxy.fetchMessages(conversation.id);
+      const { data: existingMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversation.id)
+        .order('created_at', { ascending: true });
 
       if (existingMessages) {
         const uniqueMessages = existingMessages.filter(msg => {
@@ -321,7 +381,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
         setMessages(uniqueMessages);
       }
     } catch (error) {
-      // Only log actual errors, not "no rows returned" cases
+      // Only log actual errors, not "no results" cases
       if (error instanceof Error && !error.message.includes('no rows returned')) {
         console.error('Error loading existing conversation:', error);
         setError('Failed to load conversation history');
@@ -331,7 +391,44 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
 
   const createConversation = async () => {
     try {
-      const data = await supabaseProxy.createConversation(domainId, sessionId);
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // If no user, create anonymous session
+      if (!user) {
+        await supabase.auth.signInAnonymously();
+        const { data: { user: anonUser } } = await supabase.auth.getUser();
+        if (!anonUser) throw new Error('Failed to create anonymous session');
+        
+        const { data, error } = await supabase
+          .from('conversations')
+          .insert({
+            domain_id: domainId,
+            user_id: anonUser.id,
+            session_id: sessionId,
+            last_message_at: new Date().toISOString(),
+            status: 'active'
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data.id;
+      }
+
+      // If user exists, proceed with user.id
+      const { data, error } = await supabase
+        .from('conversations')
+        .insert({
+          domain_id: domainId,
+          user_id: user.id,
+          session_id: sessionId,
+          last_message_at: new Date().toISOString(),
+          status: 'active'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
       return data.id;
     } catch (error) {
       console.error('Error creating conversation:', error);
@@ -343,6 +440,11 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     try {
       setIsLoading(true);
       setError(null);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        await supabase.auth.signInAnonymously();
+      }
       
       // Create a new conversation if one doesn't exist
       const currentConversationId = conversationId || await createConversation();
@@ -358,7 +460,6 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
         created_at: new Date().toISOString(),
       };
 
-      setMessage('');
       // Add to messages only if it's not a duplicate
       setMessages(prevMessages => {
         if (isMessageDuplicate(tempMessage, prevMessages)) {
@@ -367,7 +468,10 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
         return [...prevMessages, tempMessage];
       });
 
-      await supabaseProxy.sendMessage(content, currentConversationId, 'user');
+      // Send message through chatbot store which will handle OpenAI integration
+      await chatbotSendMessage(content, currentConversationId);
+
+      setMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
       setError('Failed to send message. Please try again.');
@@ -382,25 +486,54 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     await sendMessage(message.trim());
   };
 
-  const fetchConfig = async () => {
-    try {
-      const data = await supabaseProxy.fetchConfig(domainId);
-      if (data) {
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const { data } = await supabase
+          .from('domain_settings')
+          .select('*')
+          .eq('domain_id', domainId)
+          .single();
+
+        if (data) {
+          setConfig({
+            chatbotName: data.chatbot_name,
+            greetingMessage: data.greeting_message || 'Hello! How can I help you today?',
+            color: data.primary_color || '#FF6B00',
+            headerTextColor: data.header_text_color || '#000000'
+          });
+        } else {
+          // Use default config if no settings exist
+          setConfig({
+            chatbotName: 'Friendly Assistant',
+            greetingMessage: 'Hello! How can I help you today?',
+            color: '#FF6B00',
+            headerTextColor: '#000000'
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching chatbot config:', error);
+        // Use default config on error
         setConfig({
-          chatbotName: data.chatbot_name,
-          greetingMessage: data.greeting_message || 'Hello! How can I help you today?',
-          color: data.primary_color || '#FF6B00',
-          headerTextColor: data.header_text_color || '#000000'
+          chatbotName: 'Friendly Assistant',
+          greetingMessage: 'Hello! How can I help you today?',
+          color: '#FF6B00',
+          headerTextColor: '#000000'
         });
       }
-    } catch (error) {
-      console.error('Error fetching chatbot config:', error);
-    }
-  };
+    };
 
-  useEffect(() => {
-    fetchConfig();
+    if (domainId) {
+      fetchConfig();
+    }
   }, [domainId]);
+
+  const [config, setConfig] = useState<ChatbotConfig>({
+    chatbotName: 'Chatbot',
+    greetingMessage: 'Hello! How can I help you today?',
+    color: '#FF6B00', 
+    headerTextColor: '#000000'
+  });
 
   const buttonStyle = {
     backgroundColor: config.color,
@@ -438,7 +571,12 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     if (!conversationId) return;
 
     try {
-      await supabaseProxy.rateConversation(conversationId, rating);
+      const { error } = await supabase
+        .from('conversations')
+        .update({ rating })
+        .eq('id', conversationId);
+
+      if (error) throw error;
 
       setConversationRating(rating);
       
@@ -457,7 +595,15 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     if (!conversationId) return;
     
     try {
-      await supabaseProxy.requestLiveChat(conversationId);
+      // Update conversation with live chat request
+      const { error } = await supabase
+        .from('conversations')
+        .update({ 
+          requested_live_at: new Date().toISOString()
+        })
+        .eq('id', conversationId);
+
+      if (error) throw error;
 
       setIsRequestingLiveChat(true);
       
@@ -477,7 +623,6 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     }
   };
 
-  // Rest of the component remains the same...
   return (
     <div className="fixed bottom-6 right-6 flex flex-col items-end z-[9999]">
       {isExpanded && (
