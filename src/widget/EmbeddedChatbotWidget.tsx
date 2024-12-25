@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 
 const SESSION_KEY = 'chatbot_session_id';
 const CONVERSATION_EXPIRY_DAYS = 180; // 6 months default expiry
-const API_BASE_URL = 'https://deplo-dash-supa.vercel.app';
+const API_BASE_URL = 'https://deplo-dash-supa.vercel.app/api/widget';
 
 interface ChatbotConfig {
   chatbotName: string;
@@ -80,7 +80,7 @@ export default function EmbeddedChatbotWidget({ domainId }: { domainId: string }
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/widget`, {
+        const response = await fetch(API_BASE_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -107,7 +107,7 @@ export default function EmbeddedChatbotWidget({ domainId }: { domainId: string }
 
   const fetchMessages = async (convId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/widget`, {
+      const response = await fetch(API_BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -127,7 +127,7 @@ export default function EmbeddedChatbotWidget({ domainId }: { domainId: string }
   const sendMessage = async (content: string) => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/widget`, {
+      const response = await fetch(API_BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -160,7 +160,7 @@ export default function EmbeddedChatbotWidget({ domainId }: { domainId: string }
 
   const loadExistingConversation = async (currentSessionId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/widget`, {
+      const response = await fetch(API_BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -188,7 +188,7 @@ export default function EmbeddedChatbotWidget({ domainId }: { domainId: string }
 
   const handleStartNewConversation = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/widget`, {
+      const response = await fetch(API_BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -215,7 +215,7 @@ export default function EmbeddedChatbotWidget({ domainId }: { domainId: string }
     if (!conversationId) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/widget`, {
+      const response = await fetch(API_BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -240,7 +240,7 @@ export default function EmbeddedChatbotWidget({ domainId }: { domainId: string }
     if (!conversationId) return;
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/widget`, {
+      const response = await fetch(API_BASE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

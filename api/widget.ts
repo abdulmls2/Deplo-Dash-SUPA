@@ -9,11 +9,16 @@ const supabase = createClient(
 
 // Enable CORS middleware
 const cors = async (req: VercelRequest, res: VercelResponse) => {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // Get the origin from the request headers
+  const origin = req.headers.origin || '';
+  
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
+  // Handle preflight request
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return true;
