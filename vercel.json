@@ -5,10 +5,26 @@
       "runtime": "@vercel/node@3.0.0"
     }
   },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT" },
+        { "key": "Access-Control-Allow-Headers", "value": "*" }
+      ]
+    }
+  ],
   "routes": [
     {
       "src": "/api/chat",
       "dest": "/api/chat.ts",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/widget",
+      "dest": "/api/widget.ts",
       "methods": ["POST", "OPTIONS"]
     },
     {
