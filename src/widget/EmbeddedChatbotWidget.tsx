@@ -88,17 +88,18 @@ export default function EmbeddedChatbotWidget({ domainId }: { domainId: string }
             domainId
           })
         });
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
 
-        setConfig({
-          chatbotName: data.chatbotName || 'Chatbot',
-          greetingMessage: data.greetingMessage || 'Hello! How can I help you today?',
-          color: data.color || '#FF6B00',
-          headerTextColor: data.headerTextColor || '#000000'
-        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('Server error:', errorData);
+          throw new Error(errorData.error || 'Server error');
+        }
+
+        const data = await response.json();
+        setConfig(data);
       } catch (error) {
         console.error('Error fetching config:', error);
+        setError('Failed to load chatbot configuration');
       }
     };
 
