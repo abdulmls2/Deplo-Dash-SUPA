@@ -58,26 +58,27 @@ export default async function handler(
     switch (action) {
       case 'getConfig':
         try {
-          const { data: config, error: configError } = await supabase
+          const { data: domain, error: domainError } = await supabase
             .from('domains')
-            .select('name, greeting_message, primary_color, header_text_color')
+            .select('name')
             .eq('id', domainId)
             .single();
 
-          if (configError) {
-            console.error('Supabase error:', configError);
-            return res.status(500).json({ error: 'Database error', details: configError.message });
+          if (domainError) {
+            console.error('Supabase error:', domainError);
+            return res.status(500).json({ error: 'Database error', details: domainError.message });
           }
           
-          if (!config) {
+          if (!domain) {
             return res.status(404).json({ error: 'Domain not found' });
           }
 
+          // Return domain name with default values for other fields
           return res.status(200).json({
-            chatbotName: config.name,
-            greetingMessage: config.greeting_message,
-            color: config.primary_color,
-            headerTextColor: config.header_text_color
+            chatbotName: domain.name,
+            greetingMessage: 'Hello! How can I help you today?',
+            color: '#FF6B00',
+            headerTextColor: '#000000'
           });
         } catch (error) {
           console.error('Error in getConfig:', error);
