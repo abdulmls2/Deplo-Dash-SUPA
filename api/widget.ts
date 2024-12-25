@@ -9,28 +9,11 @@ const supabase = createClient(
 
 // Enable CORS middleware
 const cors = async (req: VercelRequest, res: VercelResponse) => {
-  // Get the origin from the request headers
-  const origin = req.headers.origin || '';
-  
-  // Allow localhost and our deployment domain
-  const allowedOrigins = [
-    'http://localhost:63342',
-    'http://localhost:3000',
-    'https://deplo-dash-supa.vercel.app'
-  ];
-
-  // Set CORS headers based on origin
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
-
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
-  // Handle preflight request
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return true;
