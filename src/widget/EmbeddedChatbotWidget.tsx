@@ -96,7 +96,12 @@ export default function EmbeddedChatbotWidget({ domainId }: { domainId: string }
         }
 
         const data = await response.json();
-        setConfig(data);
+        setConfig({
+          chatbotName: data.chatbotName || 'Chatbot',
+          greetingMessage: data.greetingMessage || 'Hello! How can I help you today?',
+          color: data.color || '#FF6B00',
+          headerTextColor: data.headerTextColor || '#000000'
+        });
       } catch (error) {
         console.error('Error fetching config:', error);
         setError('Failed to load chatbot configuration');

@@ -60,7 +60,7 @@ export default async function handler(
         try {
           const { data: config, error: configError } = await supabase
             .from('domains')
-            .select('chatbot_name, greeting_message, color, header_text_color')
+            .select('name, greeting_message, primary_color, header_text_color')
             .eq('id', domainId)
             .single();
 
@@ -74,9 +74,9 @@ export default async function handler(
           }
 
           return res.status(200).json({
-            chatbotName: config.chatbot_name,
+            chatbotName: config.name,
             greetingMessage: config.greeting_message,
-            color: config.color,
+            color: config.primary_color,
             headerTextColor: config.header_text_color
           });
         } catch (error) {
