@@ -43,6 +43,21 @@ export default async function handler(
 
     // Handle different actions
     switch (action) {
+      case 'getConfig':
+        const { data: config, error: configError } = await supabase
+          .from('domains')
+          .select('chatbot_name, greeting_message, color, header_text_color')
+          .eq('id', domainId)
+          .single();
+
+        if (configError) throw configError;
+        return res.status(200).json({
+          chatbotName: config.chatbot_name,
+          greetingMessage: config.greeting_message,
+          color: config.color,
+          headerTextColor: config.header_text_color
+        });
+
       case 'getMessages':
         const { conversationId } = payload;
         if (!conversationId) {
