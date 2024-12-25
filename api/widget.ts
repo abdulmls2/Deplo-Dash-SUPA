@@ -3,8 +3,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 // Initialize Supabase client
 const supabase = createClient(
-  process.env.SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_KEY || ''  // Using service key for admin access
+  process.env.VITE_SUPABASE_URL || '',
+  process.env.VITE_SUPABASE_SERVICE_KEY || ''  // Using service key for admin access
 );
 
 // Enable CORS middleware
@@ -30,7 +30,7 @@ export default async function handler(
     if (await cors(req, res)) return;
 
     // Validate Supabase credentials
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    if (!process.env.VITE_SUPABASE_URL || !process.env.VITE_SUPABASE_SERVICE_KEY) {
       console.error('Supabase credentials are not set');
       return res.status(500).json({ error: 'Server configuration error' });
     }
