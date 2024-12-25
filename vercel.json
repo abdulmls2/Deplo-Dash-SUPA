@@ -12,6 +12,11 @@
       "methods": ["POST", "OPTIONS"]
     },
     {
+      "src": "/api/supabase-proxy",
+      "dest": "/api/supabase-proxy.ts",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
       "src": "/(.*)",
       "dest": "/dist/$1"
     }
