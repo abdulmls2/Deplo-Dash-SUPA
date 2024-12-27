@@ -1,10 +1,14 @@
+// vite.widget.config.ts
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
   base: '',
+  define: {
+    // Remove access to process.env entirely from the client bundle
+    'process.env': '{}',
+  },
   build: {
     lib: {
       entry: 'src/widget/main.tsx',
@@ -21,7 +25,7 @@ export default defineConfig({
         }
       }
     },
-    sourcemap: true,
+    sourcemap: false, // Disable source maps to prevent exposing sensitive data
     emptyOutDir: true
   }
 });

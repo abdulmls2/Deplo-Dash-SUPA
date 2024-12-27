@@ -1,7 +1,8 @@
 // src/lib/supabase.ts
 import type { Database } from './database.types';
 
-const API_URL = 'https://deplo-dash-supa.vercel.app/api/supabase';
+// Use window.location.origin to dynamically get the current domain
+const API_URL = `${window.location.origin}/api/supabase`;
 
 type TableName = keyof Database['public']['Tables'];
 type TableRow<T extends TableName> = Database['public']['Tables'][T]['Row'];
@@ -21,9 +22,15 @@ class SupabaseClient {
         },
         body: JSON.stringify({ action, payload })
       });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       return await response.json();
     } catch (error) {
-      return { data: null, error };
+      console.error('API request failed:', error);
+      return { data: null, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 
@@ -50,12 +57,11 @@ class SupabaseClient {
       },
 
       single: async (): Promise<SupabaseResponse<TableRow<T>>> => {
-        const response = await this.fetchApi('select', { 
+        return this.fetchApi('select', { 
           table,
           query: '*',
           single: true
         });
-        return response;
       }
     };
   }

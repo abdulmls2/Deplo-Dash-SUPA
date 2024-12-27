@@ -4,15 +4,21 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import type { Database } from '../src/lib/database.types';
 
 // Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
 const supabase = createClient<Database>(
-  process.env.VITE_SUPABASE_URL || '',
-  process.env.VITE_SUPABASE_ANON_KEY || ''
+  supabaseUrl || '',
+  supabaseKey || ''
 );
 
 // Enable CORS middleware
 const cors = async (req: VercelRequest, res: VercelResponse) => {
+  // Get origin from request header
+  const origin = req.headers.origin || '';
+  
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
@@ -36,7 +42,7 @@ export default async function handler(
     }
 
     // Validate environment variables
-    if (!process.env.VITE_SUPABASE_URL || !process.env.VITE_SUPABASE_ANON_KEY) {
+    if (!supabaseUrl || !supabaseKey) {
       console.error('Supabase credentials are not set');
       return res.status(500).json({ error: 'Supabase configuration is missing' });
     }
