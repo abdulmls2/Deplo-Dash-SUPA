@@ -7,9 +7,9 @@
   },
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1.ts",
-      "methods": ["GET", "POST", "OPTIONS"]
+      "src": "/api/chat",
+      "dest": "/api/chat.ts",
+      "methods": ["POST", "OPTIONS"]
     },
     {
       "src": "/(.*)",

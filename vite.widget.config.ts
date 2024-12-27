@@ -5,9 +5,6 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   base: '',
-  define: {
-    'process.env': {} 
-  },
   build: {
     lib: {
       entry: 'src/widget/main.tsx',
