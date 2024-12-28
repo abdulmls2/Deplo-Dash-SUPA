@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Paperclip, X, Archive, MessageSquare, MessageSquarePlus, ChevronLeft, RefreshCw, ThumbsDown, Minus, ThumbsUp, UserRound, Hourglass } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, initializeSupabase } from '../lib/supabase';
 import { format } from 'date-fns';
 import { useConversationStore } from '../lib/store/conversationStore';
 import { useChatbotStore } from '../lib/store/chatbotStore';
@@ -622,6 +622,18 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       setError('Failed to request live chat. Please try again.');
     }
   };
+
+  // Initialize Supabase when the widget loads
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await initializeSupabase();
+      } catch (error) {
+        console.error('Failed to initialize Supabase:', error);
+      }
+    };
+    init();
+  }, []);
 
   return (
     <div className="fixed bottom-6 right-6 flex flex-col items-end z-[9999]">

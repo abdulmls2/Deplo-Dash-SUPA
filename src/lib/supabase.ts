@@ -6,7 +6,7 @@ let supabaseInstance: ReturnType<typeof createClient<Database>> | null = null;
 // Function to create Supabase client using credentials from backend
 async function createSupabaseClient() {
   try {
-    const response = await fetch('https://deplo-dash.vercel.app/api/supabase-config');
+    const response = await fetch('https://deplo-dash-supa.app/api/supabase-config');
     if (!response.ok) {
       throw new Error('Failed to fetch Supabase configuration');
     }
