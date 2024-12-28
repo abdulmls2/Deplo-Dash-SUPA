@@ -9,7 +9,8 @@
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist"
+        "distDir": "dist",
+        "buildCommand": "npm run build"
       }
     }
   ],
@@ -25,14 +26,17 @@
       "dest": "/api/chat.ts"
     },
     {
-      "src": "^/assets/(.*)",
+      "src": "/assets/(.*)",
+      "headers": { "cache-control": "public, max-age=31536000, immutable" },
       "dest": "/dist/assets/$1"
     },
     {
-      "handle": "filesystem"
+      "src": "/(.*)\\.(?:ico|png|jpg|jpeg|gif|svg|css|js|json)",
+      "headers": { "cache-control": "public, max-age=31536000, immutable" },
+      "dest": "/dist/$1.$2"
     },
     {
-      "src": ".*",
+      "src": "/(.*)",
       "dest": "/dist/index.html"
     }
   ]
