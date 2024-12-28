@@ -1,80 +1,21 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
 
-const VERCEL_URL = 'https://deplo-dash-supa.vercel.app';
-
-// Get the domain ID from the global config
-function getDomainId(): string {
-  if (typeof window === 'undefined') return '';
-  
-  // Try to get from CHATBOT_CONFIG
-  const config = (window as any).CHATBOT_CONFIG;
-  if (config?.domainId) return config.domainId;
-
-  // Try to get from script tag
-  const scripts = document.getElementsByTagName('script');
-  for (const script of scripts) {
-    if (script.src.includes('chatbot-widget') && script.dataset.domainId) {
-      return script.dataset.domainId;
-    }
-  }
-
-  // Try to get from URL params
-  const urlParams = new URLSearchParams(window.location.search);
-  const domainId = urlParams.get('domainId');
-  if (domainId) return domainId;
-
-  return '';
-}
-
 // Initialize with default values (will be replaced with actual values)
 let supabase: SupabaseClient<Database> = createClient(
   'https://placeholder.supabase.co',
   'placeholder-key'
 );
 
-let domainIdValue = '';
-
 // Function to create Supabase client using credentials from backend
 async function createSupabaseClient(): Promise<SupabaseClient<Database>> {
   try {
-    // Only get domain ID once
-    if (!domainIdValue) {
-      domainIdValue = getDomainId();
-    }
-
-    if (!domainIdValue) {
-      throw new Error('Domain ID is required. Please set it in CHATBOT_CONFIG, data-domain-id attribute, or URL parameter.');
-    }
-
-    console.log('Fetching Supabase config from:', `${VERCEL_URL}/api/supabase-config`);
-    
-    const response = await fetch(`${VERCEL_URL}/api/supabase-config?domainId=${domainIdValue}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      }
-    });
-
+    const response = await fetch('/api/supabase-config');
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Failed to fetch config:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText
-      });
       throw new Error('Failed to fetch Supabase configuration');
     }
-
     const { supabaseUrl, supabaseKey } = await response.json();
-    console.log('Successfully fetched encrypted Supabase config');
-
-    // Decrypt the credentials
-    const decryptedUrl = atob(supabaseUrl);
-    const decryptedKey = atob(supabaseKey);
-    
-    return createClient<Database>(decryptedUrl, decryptedKey);
+    return createClient<Database>(supabaseUrl, supabaseKey);
   } catch (error) {
     console.error('Error initializing Supabase client:', error);
     throw error;
