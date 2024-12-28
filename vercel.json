@@ -15,12 +15,21 @@
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "src": "/api/supabase-config",
+      "methods": ["GET", "OPTIONS"],
+      "dest": "/api/supabase-config.ts"
+    },
+    {
+      "src": "/api/chat",
+      "methods": ["POST", "OPTIONS"],
+      "dest": "/api/chat.ts"
     },
     {
       "src": "^/assets/(.*)",
       "dest": "/dist/assets/$1"
+    },
+    {
+      "handle": "filesystem"
     },
     {
       "src": ".*",
