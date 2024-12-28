@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, Paperclip, X, Archive, MessageSquare, MessageSquarePlus, ChevronLeft, RefreshCw, ThumbsDown, Minus, ThumbsUp, UserRound, Hourglass } from 'lucide-react';
-import { supabase, initializeSupabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
 import { useConversationStore } from '../lib/store/conversationStore';
 import { useChatbotStore } from '../lib/store/chatbotStore';
+import { Database } from '../lib/database.types';
 
 const SESSION_KEY = 'chatbot_session_id';
 const CONVERSATION_EXPIRY_DAYS = 180; // 6 months default expiry
@@ -15,20 +16,9 @@ interface ChatbotConfig {
   headerTextColor: string;
 }
 
-interface Message {
-  id: string;
-  content: string;
-  sender_type: 'user' | 'bot';
-  created_at: string;
-}
-
-interface Conversation {
-  id: string;
-  created_at: string;
-  status: 'active' | 'archived';
-  last_message_at: string;
-  rating?: 'bad' | 'ok' | 'good';
-}
+type Message = Database['public']['Tables']['messages']['Row'];
+type Conversation = Database['public']['Tables']['conversations']['Row'];
+type DomainSettings = Database['public']['Tables']['domain_settings']['Row'];
 
 export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -436,6 +426,24 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     }
   };
 
+  const createTempMessage = (content: string, conversationId: string): Message => ({
+    id: `temp-${Date.now()}`,
+    content,
+    sender_type: 'user',
+    created_at: new Date().toISOString(),
+    conversation_id: conversationId,
+    user_id: null
+  });
+
+  const createSystemMessage = (content: string, conversationId: string): Message => ({
+    id: `temp-${Date.now()}`,
+    content,
+    sender_type: 'bot',
+    created_at: new Date().toISOString(),
+    conversation_id: conversationId,
+    user_id: null
+  });
+
   const sendMessage = async (content: string) => {
     try {
       setIsLoading(true);
@@ -453,12 +461,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       }
 
       // Create a temporary message object for immediate display
-      const tempMessage: Message = {
-        id: `temp-${Date.now()}`,
-        content: content,
-        sender_type: 'user',
-        created_at: new Date().toISOString(),
-      };
+      const tempMessage = createTempMessage(content, currentConversationId);
 
       // Add to messages only if it's not a duplicate
       setMessages(prevMessages => {
@@ -608,12 +611,10 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       setIsRequestingLiveChat(true);
       
       // Add system message about live chat request
-      const systemMessage = {
-        id: `temp-${Date.now()}`,
-        content: "I'll connect you with a live agent. Please wait a moment while I transfer your chat.",
-        sender_type: 'bot',
-        created_at: new Date().toISOString(),
-      };
+      const systemMessage = createSystemMessage(
+        "I'll connect you with a live agent. Please wait a moment while I transfer your chat.",
+        conversationId
+      );
 
       setMessages(prev => [...prev, systemMessage]);
 
@@ -622,18 +623,6 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       setError('Failed to request live chat. Please try again.');
     }
   };
-
-  // Initialize Supabase when the widget loads
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await initializeSupabase();
-      } catch (error) {
-        console.error('Failed to initialize Supabase:', error);
-      }
-    };
-    init();
-  }, []);
 
   return (
     <div className="fixed bottom-6 right-6 flex flex-col items-end z-[9999]">

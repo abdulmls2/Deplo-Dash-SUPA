@@ -1,49 +1,31 @@
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from './database.types';
-
-let supabaseInstance: ReturnType<typeof createClient<Database>> | null = null;
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { Database } from './database.types';
 
 // Function to create Supabase client using credentials from backend
-async function createSupabaseClient() {
+async function createSupabaseClient(): Promise<SupabaseClient<Database>> {
   try {
-    const response = await fetch('https://deplo-dash-supa.vercel.app/api/supabase-config', {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      }
-    });
-    
+    const response = await fetch('https://deplo-dash-supa.vercel.app/api/supabase-config');
     if (!response.ok) {
-      throw new Error('Failed to initialize Supabase client');
+      throw new Error('Failed to fetch Supabase configuration');
     }
-    
     const { supabaseUrl, supabaseKey } = await response.json();
-    
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Invalid Supabase configuration');
-    }
-    
     return createClient<Database>(supabaseUrl, supabaseKey);
   } catch (error) {
     console.error('Error initializing Supabase client:', error);
-    throw new Error('Failed to initialize Supabase client');
+    throw error;
   }
 }
 
 // Initialize the client
-export const initializeSupabase = async () => {
-  if (!supabaseInstance) {
-    supabaseInstance = await createSupabaseClient();
+let supabase: SupabaseClient<Database>;
+
+// Create and export the client
+export const initializeSupabase = async (): Promise<SupabaseClient<Database>> => {
+  if (!supabase) {
+    supabase = await createSupabaseClient();
   }
-  return supabaseInstance;
+  return supabase;
 };
 
-// Export a proxy to ensure supabase is initialized
-export const supabase = new Proxy({} as ReturnType<typeof createClient<Database>>, {
-  get: (target, prop) => {
-    if (!supabaseInstance) {
-      throw new Error('Supabase client not initialized. Call initializeSupabase() first.');
-    }
-    return supabaseInstance[prop as keyof typeof supabaseInstance];
-  }
-});
+// Export the client for use in components
+export { supabase };

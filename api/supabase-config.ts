@@ -1,30 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// List of allowed origins
-const ALLOWED_ORIGINS = [
-  'https://deplo-dash-supa.vercel.app',
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'https://deplo-dash.vercel.app'
-];
-
-// Enable CORS middleware with origin validation
+// Enable CORS middleware
 const cors = async (req: VercelRequest, res: VercelResponse) => {
-  const origin = req.headers.origin;
-  
-  // Allow all origins in development
-  if (process.env.NODE_ENV === 'development') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    // Default to first allowed origin if none matches
-    res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0]);
-  }
-  
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', '*');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
@@ -41,7 +22,6 @@ export default async function handler(
     // Handle CORS
     if (await cors(req, res)) return;
 
-    // Only allow GET requests
     if (req.method !== 'GET') {
       return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -49,7 +29,7 @@ export default async function handler(
     // Validate environment variables
     if (!process.env.VITE_SUPABASE_URL || !process.env.VITE_SUPABASE_ANON_KEY) {
       console.error('Supabase configuration is not set');
-      return res.status(500).json({ error: 'Configuration error' });
+      return res.status(500).json({ error: 'Supabase configuration is not set' });
     }
 
     // Return Supabase configuration
@@ -60,7 +40,8 @@ export default async function handler(
   } catch (error: any) {
     console.error('Error in API handler:', error);
     return res.status(500).json({ 
-      error: 'Server error'
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 } 

@@ -12,143 +12,112 @@ export interface Database {
     Tables: {
       conversations: {
         Row: {
-          id: string
-          created_at: string
-          updated_at: string
-          title: string | null
-          status: 'active' | 'archived' | 'deleted'
-          last_message_at: string | null
-          user_id: string
-          is_starred: boolean
-          is_read: boolean
-        }
+          id: string;
+          created_at: string;
+          updated_at: string;
+          title: string | null;
+          status: 'active' | 'archived' | 'deleted';
+          last_message_at: string | null;
+          user_id: string;
+          domain_id: string;
+          session_id: string;
+          is_starred: boolean;
+          is_read: boolean;
+          rating?: 'bad' | 'ok' | 'good' | null;
+          requested_live_at?: string | null;
+          live_mode?: boolean;
+        };
         Insert: {
-          id?: string
-          created_at?: string
-          updated_at?: string
-          title?: string | null
-          status?: 'active' | 'archived' | 'deleted'
-          last_message_at?: string | null
-          user_id: string
-          is_starred?: boolean
-          is_read?: boolean
-        }
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          title?: string | null;
+          status?: 'active' | 'archived' | 'deleted';
+          last_message_at?: string | null;
+          user_id: string;
+          domain_id: string;
+          session_id: string;
+          is_starred?: boolean;
+          is_read?: boolean;
+          rating?: 'bad' | 'ok' | 'good' | null;
+          requested_live_at?: string | null;
+          live_mode?: boolean;
+        };
         Update: {
-          id?: string
-          created_at?: string
-          updated_at?: string
-          title?: string | null
-          status?: 'active' | 'archived' | 'deleted'
-          last_message_at?: string | null
-          user_id?: string
-          is_starred?: boolean
-          is_read?: boolean
-        }
-      }
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+          title?: string | null;
+          status?: 'active' | 'archived' | 'deleted';
+          last_message_at?: string | null;
+          user_id?: string;
+          domain_id?: string;
+          session_id?: string;
+          is_starred?: boolean;
+          is_read?: boolean;
+          rating?: 'bad' | 'ok' | 'good' | null;
+          requested_live_at?: string | null;
+          live_mode?: boolean;
+        };
+      };
       messages: {
         Row: {
-          id: string
-          created_at: string
-          conversation_id: string
-          content: string
-          sender_type: 'user' | 'bot'
-          user_id: string | null
-        }
+          id: string;
+          created_at: string;
+          conversation_id: string;
+          content: string;
+          sender_type: 'user' | 'bot';
+          user_id: string | null;
+        };
         Insert: {
-          id?: string
-          created_at?: string
-          conversation_id: string
-          content: string
-          sender_type: 'user' | 'bot'
-          user_id?: string | null
-        }
+          id?: string;
+          created_at?: string;
+          conversation_id: string;
+          content: string;
+          sender_type: 'user' | 'bot';
+          user_id?: string | null;
+        };
         Update: {
-          id?: string
-          created_at?: string
-          conversation_id?: string
-          content?: string
-          sender_type?: 'user' | 'bot'
-          user_id?: string | null
-        }
-      }
-      conversation_tags: {
+          id?: string;
+          created_at?: string;
+          conversation_id?: string;
+          content?: string;
+          sender_type?: 'user' | 'bot';
+          user_id?: string | null;
+        };
+      };
+      domain_settings: {
         Row: {
-          id: string
-          conversation_id: string
-          tag_id: string
-          created_at: string
-        }
+          id: string;
+          created_at: string;
+          domain_id: string;
+          chatbot_name: string;
+          greeting_message: string | null;
+          primary_color: string | null;
+          header_text_color: string | null;
+        };
         Insert: {
-          id?: string
-          conversation_id: string
-          tag_id: string
-          created_at?: string
-        }
+          id?: string;
+          created_at?: string;
+          domain_id: string;
+          chatbot_name: string;
+          greeting_message?: string | null;
+          primary_color?: string | null;
+          header_text_color?: string | null;
+        };
         Update: {
-          id?: string
-          conversation_id?: string
-          tag_id?: string
-          created_at?: string
-        }
-      }
-      tags: {
-        Row: {
-          id: string
-          name: string
-          color: string
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          name: string
-          color: string
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          name?: string
-          color?: string
-          created_at?: string
-        }
-      }
-      profiles: {
-        Row: {
-          id: string
-          created_at: string
-          username: string
-          full_name: string | null
-          avatar_url: string | null
-          email: string
-          updated_at: string | null
-        }
-        Insert: {
-          id: string
-          created_at?: string
-          username: string
-          full_name?: string | null
-          avatar_url?: string | null
-          email: string
-          updated_at?: string | null
-        }
-        Update: {
-          id?: string
-          created_at?: string
-          username?: string
-          full_name?: string | null
-          avatar_url?: string | null
-          email?: string
-          updated_at?: string | null
-        }
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      [_ in never]: never
-    }
-    Enums: {
-      [_ in never]: never
-    }
-  }
+          id?: string;
+          created_at?: string;
+          domain_id?: string;
+          chatbot_name?: string;
+          greeting_message?: string | null;
+          primary_color?: string | null;
+          header_text_color?: string | null;
+        };
+      };
+    };
+    Views: {};
+    Functions: {};
+    Enums: {};
+  };
 }
