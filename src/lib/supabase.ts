@@ -1,10 +1,37 @@
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from './database.types';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+let supabaseInstance: ReturnType<typeof createClient<Database>> | null = null;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables');
+// Function to create Supabase client using credentials from backend
+async function createSupabaseClient() {
+  try {
+    const response = await fetch('https://deplo-dash.vercel.app/api/supabase-config');
+    if (!response.ok) {
+      throw new Error('Failed to fetch Supabase configuration');
+    }
+    const { supabaseUrl, supabaseKey } = await response.json();
+    return createClient<Database>(supabaseUrl, supabaseKey);
+  } catch (error) {
+    console.error('Error initializing Supabase client:', error);
+    throw error;
+  }
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Initialize the client
+export const initializeSupabase = async () => {
+  if (!supabaseInstance) {
+    supabaseInstance = await createSupabaseClient();
+  }
+  return supabaseInstance;
+};
+
+// Export a proxy to ensure supabase is initialized
+export const supabase = new Proxy({} as ReturnType<typeof createClient<Database>>, {
+  get: (target, prop) => {
+    if (!supabaseInstance) {
+      throw new Error('Supabase client not initialized. Call initializeSupabase() first.');
+    }
+    return supabaseInstance[prop as keyof typeof supabaseInstance];
+  }
+});
