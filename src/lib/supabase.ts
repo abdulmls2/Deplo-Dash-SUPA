@@ -8,23 +8,25 @@ async function createSupabaseClient() {
   try {
     const response = await fetch('https://deplo-dash-supa.vercel.app/api/supabase-config', {
       headers: {
-        'X-Requested-With': 'XMLHttpRequest',
         'Accept': 'application/json',
         'Content-Type': 'application/json'
-      },
-      credentials: 'include'
+      }
     });
     
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to fetch Supabase configuration: ${error}`);
+      throw new Error('Failed to initialize Supabase client');
     }
     
     const { supabaseUrl, supabaseKey } = await response.json();
+    
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Invalid Supabase configuration');
+    }
+    
     return createClient<Database>(supabaseUrl, supabaseKey);
   } catch (error) {
     console.error('Error initializing Supabase client:', error);
-    throw error;
+    throw new Error('Failed to initialize Supabase client');
   }
 }
 
