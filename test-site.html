@@ -3,29 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Amazing Website</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <title>Test Site</title>
+    <!-- Load React and ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Load your widget styles -->
+    <link href="https://deplo-dash-supa.vercel.app/widget/style.css" rel="stylesheet">
 </head>
 <body>
-    <!-- Header -->
-    <header class="bg-gray-900 text-white py-6">
-        <div class="container mx-auto px-6">
-            <h1 class="text-3xl font-bold">My Company</h1>
-            <p class="mt-2">Providing amazing solutions since 2024</p>
-        </div>
-    </header>
+    <h1>Test Site</h1>
+    <p>This is a test site to demonstrate the chatbot widget.</p>
 
-    <!-- Load React and ReactDOM -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <link href="https://deplo-dash-supa.vercel.app/widget/style.css" rel="stylesheet">
+    <!-- Widget container -->
+    <div id="chatbot-widget"></div>
 
-    <!-- Chatbot Integration -->
+    <!-- Load your widget script -->
+    <script src="https://deplo-dash-supa.vercel.app/widget/chatbot-widget.umd.js"></script>
     <script>
-        window.CHATBOT_CONFIG = {
-            domainId: "4b32ec2c-b40b-43f5-a0e1-1133ea069f41" // Replace with your actual domain ID
+        // Initialize the widget
+        window.onload = function() {
+            const domainId = '4b32ec2c-b40b-43f5-a0e1-1133ea069f41'; // Your domain ID
+            const container = document.getElementById('chatbot-widget');
+            chatbotWidget.render(container, { domainId });
         };
     </script>
-    <script src="https://deplo-dash-supa.vercel.app/widget/chatbot-widget.umd.js"></script>
 </body>
 </html>

@@ -10,7 +10,8 @@ let supabase: SupabaseClient<Database> = createClient(
 // Function to create Supabase client using credentials from backend
 async function createSupabaseClient(): Promise<SupabaseClient<Database>> {
   try {
-    const response = await fetch('/api/supabase-config');
+    // Use the absolute URL for the API endpoint
+    const response = await fetch('https://deplo-dash-supa.vercel.app/api/supabase-config');
     if (!response.ok) {
       throw new Error('Failed to fetch Supabase configuration');
     }

@@ -2624,7 +2624,7 @@ class Ci {
         close: () => {
           this.conn = null;
         }
-      }), import("./browser-CY90dd2k.js").then((e) => e.b).then(({ default: e }) => {
+      }), import("./browser-GeGO4A9v.js").then((e) => e.b).then(({ default: e }) => {
         this.conn = new e(this._endPointURL(), void 0, {
           headers: this.headers
         }), this.setupConnection();
@@ -5872,7 +5872,7 @@ let q = Bs(
 );
 async function Ba() {
   try {
-    const s = await fetch("/api/supabase-config");
+    const s = await fetch("https://deplo-dash-supa.vercel.app/api/supabase-config");
     if (!s.ok)
       throw new Error("Failed to fetch Supabase configuration");
     const { supabaseUrl: e, supabaseKey: t } = await s.json();
@@ -8280,4 +8280,4 @@ Qc();
 export {
   kn as g
 };
-//# sourceMappingURL=main-DFc4FD__.js.map
+//# sourceMappingURL=main-DLxmSNOn.js.map
