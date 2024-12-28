@@ -6,7 +6,7 @@ You are a helpful customer support assistant. Your goal is to provide clear, acc
 export const generateBotResponse = async (message: string, conversationId: string): Promise<string> => {
   try {
     // Always use the absolute URL for the API endpoint
-    const API_URL = 'https://deplo-dash-supa.vercel.app/api/chat';
+    const API_URL = 'https://deplo-dash.vercel.app/api/chat';
     
     const response = await fetch(API_URL, {
       method: 'POST',
