@@ -26,17 +26,26 @@
     <!-- Widget container -->
     <div id="chatbot-widget"></div>
 
+    <!-- Set global config before loading the widget -->
+    <script>
+        window.CHATBOT_CONFIG = {
+            domainId: '4b32ec2c-b40b-43f5-a0e1-1133ea069f41'
+        };
+    </script>
+
     <!-- Load your widget script -->
-    <script src="https://deplo-dash-supa.vercel.app/widget/chatbot-widget.umd.js"></script>
+    <script 
+        src="https://deplo-dash-supa.vercel.app/widget/chatbot-widget.umd.js"
+        data-domain-id="4b32ec2c-b40b-43f5-a0e1-1133ea069f41"
+    ></script>
     <script>
         // Initialize the widget
         window.onload = function() {
-            const domainId = '4b32ec2c-b40b-43f5-a0e1-1133ea069f41'; // Your domain ID
             const container = document.getElementById('chatbot-widget');
             const status = document.getElementById('status');
 
             try {
-                chatbotWidget.render(container, { domainId });
+                chatbotWidget.render(container, {});
                 status.textContent = 'Widget loaded successfully';
                 status.style.color = 'green';
             } catch (error) {

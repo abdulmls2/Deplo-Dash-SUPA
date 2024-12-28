@@ -1,19 +1,21 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
 
-// Get the base URL for the API
-function getApiBaseUrl() {
-  // Check if we're running in a browser
-  if (typeof window !== 'undefined') {
-    // If the page is served from localhost or file://, use the production URL
-    if (window.location.hostname === 'localhost' || window.location.protocol === 'file:') {
-      return 'https://deplo-dash-supa.vercel.app';
-    }
-    // Otherwise, use the current origin
-    return window.location.origin;
-  }
-  // Fallback to production URL
-  return 'https://deplo-dash-supa.vercel.app';
+const VERCEL_URL = 'https://deplo-dash-supa.vercel.app';
+
+// Get the domain ID from the global config
+function getDomainId(): string {
+  if (typeof window === 'undefined') return '';
+  
+  // Try to get from CHATBOT_CONFIG
+  const config = (window as any).CHATBOT_CONFIG;
+  if (config?.domainId) return config.domainId;
+
+  // Try to get from data attribute
+  const script = document.currentScript as HTMLScriptElement;
+  if (script?.dataset.domainId) return script.dataset.domainId;
+
+  return '';
 }
 
 // Initialize with default values (will be replaced with actual values)
@@ -25,16 +27,19 @@ let supabase: SupabaseClient<Database> = createClient(
 // Function to create Supabase client using credentials from backend
 async function createSupabaseClient(): Promise<SupabaseClient<Database>> {
   try {
-    const baseUrl = getApiBaseUrl();
-    console.log('Fetching Supabase config from:', `${baseUrl}/api/supabase-config`);
+    const domainId = getDomainId();
+    if (!domainId) {
+      throw new Error('Domain ID is required. Please set it in CHATBOT_CONFIG or data-domain-id attribute.');
+    }
+
+    console.log('Fetching Supabase config from:', `${VERCEL_URL}/api/supabase-config`);
     
-    const response = await fetch(`${baseUrl}/api/supabase-config`, {
+    const response = await fetch(`${VERCEL_URL}/api/supabase-config?domainId=${domainId}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
-      },
-      mode: 'cors'
+      }
     });
 
     if (!response.ok) {
@@ -48,9 +53,13 @@ async function createSupabaseClient(): Promise<SupabaseClient<Database>> {
     }
 
     const { supabaseUrl, supabaseKey } = await response.json();
-    console.log('Successfully fetched Supabase config');
+    console.log('Successfully fetched encrypted Supabase config');
+
+    // Decrypt the credentials
+    const decryptedUrl = atob(supabaseUrl);
+    const decryptedKey = atob(supabaseKey);
     
-    return createClient<Database>(supabaseUrl, supabaseKey);
+    return createClient<Database>(decryptedUrl, decryptedKey);
   } catch (error) {
     console.error('Error initializing Supabase client:', error);
     throw error;
